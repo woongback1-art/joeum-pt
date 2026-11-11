@@ -454,6 +454,8 @@ function sidePanel() {
       jhtml = (j ? journalItemsView(j.items) : '<p class="muted small">아직 일지가 없어요.</p>') +
         '<button type="button" class="btn ' + (j ? 'btn-outline' : 'btn-primary') + '" data-act="writeJournal" data-id="' + s.id + '">' + (j ? '일지 수정' : '일지 쓰기') + '</button>';
     }
+    const canDelete = isAdmin() || s.trainer_id === S.me.id;
+    if (canDelete) jhtml += '<button type="button" class="link small left danger-text" data-act="deleteSession" data-id="' + s.id + '">이 일정 삭제</button>';
     html += '<section class="card stack" aria-label="선택한 일정">' +
       '<div class="row-between"><span class="pill ' + st.cls + '">' + st.label + '</span><button type="button" class="btn icon sm" data-act="closeSession" aria-label="닫기">×</button></div>' +
       '<div><button type="button" class="link big" data-act="openMember" data-id="' + s.member_id + '">' + esc(m ? m.name : '?') + '</button>' +
@@ -931,6 +933,19 @@ const actions = {
   }),
   gotoSession: (d) => run(async () => { S.screen = 'schedule'; S.calDate = d.d; S.selSessionId = d.id; S.composer = null; await loadSessions(); }),
   closeSession: () => { S.selSessionId = null; render(); },
+  deleteSession: (d) => {
+    const s = S.sessions.find((x) => x.id === d.id) || S.todaySessions.find((x) => x.id === d.id);
+    if (!s) return;
+    const m = memberById(s.member_id);
+    const when = longDay(localDate(s.starts_at)) + ' ' + localTime(s.starts_at);
+    const extra = s.status === 'done' ? ' 출석 처리된 수업이라 수강권 횟수가 1회 돌아오고, 수업료에서도 빠지고, 수업일지도 같이 지워져요.' : journalOf(s) ? ' 수업일지도 같이 지워져요.' : '';
+    confirmBox('일정 삭제', (m ? m.name : '') + ' ' + when + ' 일정을 지울까요?' + extra + ' 되돌릴 수 없어요.', '삭제', async () => {
+      await api.remove('sessions', s.id);
+      S.selSessionId = null; S.composer = null;
+      await refreshAfterSessionChange();
+      if (S.screen === 'sales') await loadMonthDone();
+    });
+  },
   setStatus: (d) => run(async () => {
     await api.update('sessions', d.id, { status: d.v });
     await refreshAfterSessionChange();

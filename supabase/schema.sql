@@ -271,3 +271,11 @@ grant select on public.pass_usage to authenticated;
 -- 관리자만 바꿀 수 있음 (profiles 수정 권한이 관리자에게만 있음)
 -- =============================================================
 alter table public.profiles add column if not exists session_pay int not null default 30000;
+
+-- =============================================================
+-- 일정 삭제: 관리자는 전부, 강사는 본인 담당 일정만 (출석 처리된 것 포함)
+-- 지우면 연결된 수업일지도 같이 지워짐 (on delete cascade)
+-- =============================================================
+drop policy if exists sessions_delete_own on public.sessions;
+create policy sessions_delete_own on public.sessions for delete to authenticated
+  using (public.is_staff() and trainer_id = auth.uid());

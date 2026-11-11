@@ -420,9 +420,10 @@ export class MockApi {
     const me = this._me();
     const row = (this.db[table] || []).find((r) => r.id === id);
     if (!row) return;
-    const ownerOk = (table === 'tasks' && row.owner_id === me.id) || (table === 'posts' && row.author_id === me.id);
+    const ownerOk = (table === 'tasks' && row.owner_id === me.id) || (table === 'posts' && row.author_id === me.id) || (table === 'sessions' && row.trainer_id === me.id);
     if (!this._admin() && !(this._staff() && ownerOk)) throw new ApiError('삭제할 권한이 없어요.', 403);
     this.db[table] = this.db[table].filter((r) => r.id !== id);
+    if (table === 'sessions') this.db.journals = this.db.journals.filter((j) => j.session_id !== id);
     if (table === 'members') {
       for (const t of ['passes', 'sessions', 'journals', 'payments']) this.db[t] = this.db[t].filter((r) => r.member_id !== id);
     }
