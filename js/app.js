@@ -1,5 +1,7 @@
-import { SUPABASE_URL, SUPABASE_KEY, CENTER_NAME } from './config.js';
-import { SupaApi, MockApi } from './api.js';
+// 같은 버전 번호로 config·api 도 새로 불러오기
+const V = new URL(import.meta.url).searchParams.get('v') || '';
+const { SUPABASE_URL, SUPABASE_KEY, CENTER_NAME } = await import('./config.js?v=' + V);
+const { SupaApi, MockApi } = await import('./api.js?v=' + V);
 
 // =============================================================
 // 기본 도구
