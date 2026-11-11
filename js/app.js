@@ -181,10 +181,64 @@ async function run(fn, okMsg) {
 }
 
 function view() {
+  if (S.shared) return sharedView();
   if (S.booting) return '<div class="center-screen"><div class="spinner" aria-label="불러오는 중"></div></div>';
   if (!S.user || S.authView === 'newpw') return authView();
   if (!S.me || S.me.role === 'pending') return pendingView();
   return layoutView();
+}
+
+// ---------- 회원용 공유 화면 (로그인 없이) ----------
+function sharedView() {
+  const sh = S.shared;
+  let body;
+  if (sh.loading) body = '<div class="center-screen" style="min-height:40vh"><div class="spinner" aria-label="불러오는 중"></div></div>';
+  else if (!sh.data) body = '<div class="card"><h1 class="h2">일지를 찾을 수 없어요</h1><p class="muted">링크가 잘못됐거나, 강사님이 공유를 끈 일지예요.</p></div>';
+  else {
+    const d = sh.data;
+    const when = d.starts_at ? longDay(localDate(d.starts_at)) + ' ' + localTime(d.starts_at) : '';
+    const items = (d.items || []).map((it, i) => {
+      const v = it.video ? (sh.urls[it.video] ? '<video src="' + esc(sh.urls[it.video]) + '" controls playsinline preload="metadata" class="share-video"></video>' : sh.urls[it.video] === null ? '<p class="muted small">영상을 불러오지 못했어요.</p>' : '<p class="muted small">영상 불러오는 중…</p>') : '';
+      return '<section class="card share-item"><div class="row gap8"><span class="share-no">' + (i + 1) + '</span><h2 class="h2 grow">' + esc(it.exercise) + '</h2></div>' +
+        (Number(it.sets) || Number(it.reps) ? '<div class="share-sets">' + (Number(it.sets) ? '<b>' + Number(it.sets) + '</b>세트' : '') + (Number(it.sets) && Number(it.reps) ? ' × ' : '') + (Number(it.reps) ? '<b>' + Number(it.reps) + '</b>회' : '') + '</div>' : '') +
+        (it.check ? '<p class="pre share-check">' + esc(it.check) + '</p>' : '') + v + '</section>';
+    }).join('');
+    body = '<header class="share-head"><div class="brand-lg">' + esc(CENTER_NAME) + '</div><h1 class="h1">' + esc(d.member) + ' 회원님 수업일지</h1><div class="muted">' + when + (d.trainer ? ' · 담당 ' + esc(d.trainer) + ' 강사' : '') + '</div></header>' + items +
+      '<p class="muted small center">' + esc(CENTER_NAME) + '에서 보낸 수업 기록이에요.</p>';
+  }
+  return '<div class="share-page">' + body + '</div>';
+}
+
+async function loadShared(token) {
+  S.shared = { loading: true, data: null, urls: {} };
+  renderNow();
+  try {
+    S.shared.data = await api.rpc('get_shared_journal', { p_token: token });
+  } catch (e) {
+    console.error(e);
+    S.shared.data = null;
+  }
+  S.shared.loading = false;
+  renderNow();
+  const items = (S.shared.data && S.shared.data.items) || [];
+  for (const it of items) {
+    if (!it.video) continue;
+    try { S.shared.urls[it.video] = await api.videoUrl(it.video); } catch (e) { S.shared.urls[it.video] = null; }
+    render();
+  }
+}
+
+function shareUrl(token) {
+  return location.origin + location.pathname + '?j=' + encodeURIComponent(token);
+}
+
+function shareText(memberName, startsAt, items, url) {
+  const when = startsAt ? md(localDate(startsAt)) + '(' + DOW[dowOf(localDate(startsAt))] + ')' : '';
+  const lines = (items || []).map((it, i) => {
+    const st = (Number(it.sets) ? it.sets + '세트' : '') + (Number(it.sets) && Number(it.reps) ? ' × ' : '') + (Number(it.reps) ? it.reps + '회' : '');
+    return (i + 1) + '. ' + it.exercise + (st ? ' ' + st : '');
+  });
+  return '[' + CENTER_NAME + ' 수업일지] ' + when + ' ' + memberName + ' 회원님\n' + lines.join('\n') + '\n\n자세히 보기 (영상·체크사항): ' + url;
 }
 
 // ---------- 로그인 ----------
@@ -453,7 +507,7 @@ function sidePanel() {
     }
     let jhtml = '';
     if (s.status === 'done') {
-      jhtml = (j ? journalItemsView(j.items) : '<p class="muted small">아직 일지가 없어요.</p>') +
+      jhtml = (j ? journalItemsView(j.items) + '<button type="button" class="btn btn-primary" data-act="shareJournal" data-id="' + j.id + '">회원에게 보내기</button>' : '<p class="muted small">아직 일지가 없어요.</p>') +
         '<button type="button" class="btn ' + (j ? 'btn-outline' : 'btn-primary') + '" data-act="writeJournal" data-id="' + s.id + '" data-d="' + d + '">' + (j ? '일지 수정' : '일지 쓰기') + '</button>';
     } else if (s.status === 'reserved') {
       jhtml = (j ? '<div class="small b">미리 써 둔 수업일지</div>' + journalItemsView(j.items) : '') +
@@ -514,6 +568,7 @@ function composerView() {
 function journalTools(j) {
   const canDel = isAdmin() || j.trainer_id === S.me.id;
   return '<div class="row gap8 mt8">' +
+    '<button type="button" class="btn btn-sm btn-primary" data-act="shareJournal" data-id="' + j.id + '">회원에게 보내기' + (j.share_token ? ' (링크 있음)' : '') + '</button>' +
     '<button type="button" class="btn btn-sm btn-outline" data-act="editJournalHere" data-id="' + j.session_id + '">수정</button>' +
     (canDel ? '<button type="button" class="btn btn-sm danger-text" data-act="deleteJournal" data-id="' + j.id + '">삭제</button>' : '') + '</div>';
 }
@@ -766,6 +821,15 @@ function modalView() {
     title = (p ? '수정 · ' : '새 ') + (kind === 'manual' ? '매뉴얼' : '공지');
     submit = 'savePost';
     body = '<input type="hidden" name="kind" value="' + kind + '">' + field('po-title', '제목', '<input id="po-title" name="title" required value="' + esc(p ? p.title : '') + '">') + field('po-body', '내용', '<textarea id="po-body" name="body" rows="8">' + esc(p ? p.body : '') + '</textarea>');
+  } else if (md_.type === 'share') {
+    title = '회원에게 일지 보내기';
+    body = '<p class="small">' + esc(md_.memberName) + ' 회원님 전용 링크예요. 로그인 없이 운동 내용과 영상을 볼 수 있어요.</p>' +
+      '<label for="share-url">링크</label><input id="share-url" readonly value="' + esc(md_.url) + '">' +
+      '<label for="share-text">보낼 글 (고쳐도 돼요)</label><textarea id="share-text" rows="8">' + esc(md_.text) + '</textarea>' +
+      '<div class="row gap8 wrap">' + (navigator.share ? '<button type="button" class="btn btn-primary grow" data-act="shareNow">카톡 등으로 보내기</button>' : '') +
+      '<button type="button" class="btn grow" data-act="copyShare">글+링크 복사</button></div>' +
+      '<button type="button" class="link small left" data-act="openShareLink">회원이 보는 화면 미리보기</button>' +
+      '<button type="button" class="link small left danger-text" data-act="unshareJournal" data-id="' + md_.journalId + '">링크 끄기 (보낸 링크로 더는 못 봐요)</button>';
   } else if (md_.type === 'video') {
     title = '운동 영상';
     body = md_.url ? '<video src="' + esc(md_.url) + '" controls playsinline autoplay style="width:100%;max-height:70vh;background:#000;border-radius:8px"></video>' : '<p class="muted">영상을 불러오는 중…</p>';
@@ -830,7 +894,7 @@ async function loadSessions(force) {
   const key = from + '|' + to;
   if (!force && key === S.sessionsRange) return;
   const rows = await api.select('sessions', {
-    select: '*,journals(id,items,trainer_id,updated_at)',
+    select: '*,journals(id,items,trainer_id,updated_at,share_token)',
     filters: [['starts_at', 'gte', new Date(from + 'T00:00:00').toISOString()], ['starts_at', 'lt', new Date(to + 'T00:00:00').toISOString()]],
     order: 'starts_at.asc',
   });
@@ -850,7 +914,7 @@ async function loadToday() {
   await loadUnchecked();
   const t = todayStr();
   S.todaySessions = await api.select('sessions', {
-    select: '*,journals(id,items,trainer_id,updated_at)',
+    select: '*,journals(id,items,trainer_id,updated_at,share_token)',
     filters: [['starts_at', 'gte', new Date(t + 'T00:00:00').toISOString()], ['starts_at', 'lt', new Date(addDays(t, 1) + 'T00:00:00').toISOString()]],
     order: 'starts_at.asc',
   });
@@ -1003,8 +1067,38 @@ const actions = {
     S.composer = { sessionId: d.id, journalId: j ? j.id : null, rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
   }),
   closeComposer: () => { S.composer = null; render(); },
+  shareJournal: (d) => run(async () => {
+    const rows = await api.select('journals', { filters: [['id', 'eq', d.id]] });
+    let j = rows[0];
+    if (!j) throw new Error('일지를 찾을 수 없어요.');
+    if (!j.share_token) j = await api.update('journals', j.id, { share_token: (uid() + uid()).replace(/-/g, '') });
+    let startsAt = null;
+    if (j.session_id) { const ss = await api.select('sessions', { select: 'id,starts_at', filters: [['id', 'eq', j.session_id]] }); startsAt = ss[0] ? ss[0].starts_at : null; }
+    const m = memberById(j.member_id);
+    const url = shareUrl(j.share_token);
+    S.modal = { type: 'share', journalId: j.id, memberName: m ? m.name : '', url, text: shareText(m ? m.name : '', startsAt, j.items, url) };
+    await Promise.all([loadSessions(true), loadToday()]);
+    if (S.screen === 'journal') await loadJournals();
+  }),
+  shareNow: () => {
+    const text = document.getElementById('share-text').value;
+    navigator.share({ title: CENTER_NAME + ' 수업일지', text }).catch(() => {});
+  },
+  copyShare: () => {
+    const text = document.getElementById('share-text').value;
+    const done = () => toast('복사했어요. 카톡 대화창에 붙여 넣으세요.');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => { document.getElementById('share-text').select(); document.execCommand('copy'); done(); });
+    else { document.getElementById('share-text').select(); document.execCommand('copy'); done(); }
+  },
+  openShareLink: () => { window.open(S.modal.url, '_blank'); },
+  unshareJournal: (d) => run(async () => {
+    await api.update('journals', d.id, { share_token: null });
+    S.modal = null;
+    await Promise.all([loadSessions(true), loadToday()]);
+    if (S.screen === 'journal') await loadJournals();
+  }, '링크를 껐어요. 보낸 링크로는 더 이상 볼 수 없어요.'),
   editJournalHere: (d) => run(async () => {
-    const rows = await api.select('sessions', { select: '*,journals(id,items,trainer_id,updated_at)', filters: [['id', 'eq', d.id]] });
+    const rows = await api.select('sessions', { select: '*,journals(id,items,trainer_id,updated_at,share_token)', filters: [['id', 'eq', d.id]] });
     const s = rows[0];
     if (!s) throw new Error('연결된 일정을 찾을 수 없어요.');
     const j = journalOf(s);
@@ -1272,6 +1366,8 @@ document.addEventListener('keydown', (ev) => {
 // 시작
 // =============================================================
 (async function boot() {
+  const shareToken = params.get('j');
+  if (shareToken) { await loadShared(shareToken); return; }
   try {
     if (api.redirectError) S.authErr = api.redirectError;
     if (api.redirectType === 'recovery') S.authView = 'newpw';

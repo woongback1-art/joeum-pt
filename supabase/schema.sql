@@ -287,3 +287,51 @@ alter table public.sessions alter column duration_min set default 60;
 drop policy if exists journals_delete_own on public.journals;
 create policy journals_delete_own on public.journals for delete to authenticated
   using (public.is_staff() and trainer_id = auth.uid());
+
+-- =============================================================
+-- 회원에게 일지 공유 (일지마다 링크)
+--  · share_token 이 있는 일지만, 그 토큰을 아는 사람(로그인 없이)이 볼 수 있음
+--  · 보이는 것: 회원 이름, 수업 날짜, 담당 강사, 운동 내용·영상 (다른 정보는 안 보임)
+-- =============================================================
+alter table public.journals add column if not exists share_token text unique;
+
+create or replace function public.get_shared_journal(p_token text)
+returns json
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select json_build_object(
+    'member', m.name,
+    'trainer', p.name,
+    'starts_at', s.starts_at,
+    'items', j.items,
+    'updated_at', j.updated_at
+  )
+  from public.journals j
+  join public.members m on m.id = j.member_id
+  left join public.sessions s on s.id = j.session_id
+  left join public.profiles p on p.id = j.trainer_id
+  where p_token is not null and length(p_token) >= 20 and j.share_token = p_token
+  limit 1;
+$$;
+grant execute on function public.get_shared_journal(text) to anon, authenticated;
+
+create or replace function public.is_shared_video(p_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.journals j, jsonb_array_elements(j.items) it
+    where j.share_token is not null and it->>'video' = p_name
+  );
+$$;
+grant execute on function public.is_shared_video(text) to anon, authenticated;
+
+drop policy if exists videos_select_shared on storage.objects;
+create policy videos_select_shared on storage.objects for select to anon
+  using (bucket_id = 'videos' and public.is_shared_video(name));

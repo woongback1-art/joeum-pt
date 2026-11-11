@@ -171,3 +171,14 @@ button.list-row:hover { background: #FAFAF7; }
 
 .warn-card { border-color: #E8B48A; background: #FFF8F1; }
 .btn.icon.sm:disabled { opacity: .3; }
+
+/* 회원용 공유 화면 */
+.share-page { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; display: flex; flex-direction: column; gap: 14px; }
+.share-head { display: flex; flex-direction: column; gap: 6px; padding: 8px 4px 4px; }
+.share-head .brand-lg { font-size: 18px; }
+.share-item { display: flex; flex-direction: column; gap: 8px; }
+.share-no { width: 28px; height: 28px; border-radius: 14px; background: var(--accent); color: #fff; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.share-sets { font-size: 16px; color: #1F4E80; } .share-sets b { font-size: 20px; }
+.share-check { margin: 0; font-size: 15px; line-height: 1.6; }
+.share-video { width: 100%; max-height: 70vh; border-radius: 8px; background: #000; }
+.center { text-align: center; }
