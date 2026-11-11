@@ -200,7 +200,7 @@ function sharedView() {
     const items = (d.items || []).map((it, i) => {
       const v = it.video ? (sh.urls[it.video] ? '<video src="' + esc(sh.urls[it.video]) + '" controls playsinline preload="metadata" class="share-video"></video>' : sh.urls[it.video] === null ? '<p class="muted small">영상을 불러오지 못했어요.</p>' : '<p class="muted small">영상 불러오는 중…</p>') : '';
       return '<section class="card share-item"><div class="row gap8"><span class="share-no">' + (i + 1) + '</span><h2 class="h2 grow">' + esc(it.exercise) + '</h2></div>' +
-        (Number(it.sets) || Number(it.reps) ? '<div class="share-sets">' + (Number(it.sets) ? '<b>' + Number(it.sets) + '</b>세트' : '') + (Number(it.sets) && Number(it.reps) ? ' × ' : '') + (Number(it.reps) ? '<b>' + Number(it.reps) + '</b>회' : '') + '</div>' : '') +
+        (doseText(it) ? '<div class="share-sets">' + esc(doseText(it)) + '</div>' : '') +
         (it.check ? '<p class="pre share-check">' + esc(it.check) + '</p>' : '') + v + '</section>';
     }).join('');
     body = '<header class="share-head"><div class="brand-lg">' + esc(CENTER_NAME) + '</div><h1 class="h1">' + esc(d.member) + ' 회원님 수업일지</h1><div class="muted">' + when + (d.trainer ? ' · 담당 ' + esc(d.trainer) + ' 강사' : '') + '</div></header>' + items +
@@ -235,7 +235,7 @@ function shareUrl(token) {
 function shareText(memberName, startsAt, items, url) {
   const when = startsAt ? md(localDate(startsAt)) + '(' + DOW[dowOf(localDate(startsAt))] + ')' : '';
   const lines = (items || []).map((it, i) => {
-    const st = (Number(it.sets) ? it.sets + '세트' : '') + (Number(it.sets) && Number(it.reps) ? ' × ' : '') + (Number(it.reps) ? it.reps + '회' : '');
+    const st = doseText(it);
     return (i + 1) + '. ' + it.exercise + (st ? ' ' + st : '');
   });
   return '[' + CENTER_NAME + ' 수업일지] ' + when + ' ' + memberName + ' 회원님\n' + lines.join('\n') + '\n\n자세히 보기 (영상·체크사항): ' + url;
@@ -553,6 +553,8 @@ function composerView() {
       '<label for="ex-name-' + i + '">운동 이름</label><input id="ex-name-' + i + '" list="exercise-list" data-row="' + i + '" data-field="exercise" value="' + esc(r.exercise) + '" placeholder="예: 스쿼트">' +
       '<div class="row gap8"><div class="grow stack4"><label for="ex-sets-' + i + '">세트</label><input id="ex-sets-' + i + '" type="number" inputmode="numeric" min="0" max="99" data-row="' + i + '" data-field="sets" value="' + esc(r.sets || '') + '" placeholder="3"></div>' +
       '<div class="grow stack4"><label for="ex-reps-' + i + '">횟수</label><input id="ex-reps-' + i + '" type="number" inputmode="numeric" min="0" max="999" data-row="' + i + '" data-field="reps" value="' + esc(r.reps || '') + '" placeholder="12"></div></div>' +
+      '<div class="row gap8"><div class="grow stack4"><label for="ex-min-' + i + '">분</label><input id="ex-min-' + i + '" type="number" inputmode="numeric" min="0" max="999" data-row="' + i + '" data-field="min" value="' + esc(r.min || '') + '" placeholder="1"></div>' +
+      '<div class="grow stack4"><label for="ex-sec-' + i + '">초</label><input id="ex-sec-' + i + '" type="number" inputmode="numeric" min="0" max="59" data-row="' + i + '" data-field="sec" value="' + esc(r.sec || '') + '" placeholder="30"></div></div>' +
       '<span class="lbl">운동 영상</span>' + video +
       '<label for="ex-check-' + i + '">체크사항</label><textarea id="ex-check-' + i + '" rows="2" data-row="' + i + '" data-field="check" placeholder="자세 피드백, 중량, 다음에 볼 점">' + esc(r.check) + '</textarea></div>';
   }).join('');
@@ -573,10 +575,16 @@ function journalTools(j) {
     (canDel ? '<button type="button" class="btn btn-sm danger-text" data-act="deleteJournal" data-id="' + j.id + '">삭제</button>' : '') + '</div>';
 }
 
+// "3세트 × 12회 · 1분 30초"
+function doseText(it) {
+  const s = Number(it.sets) || 0, r = Number(it.reps) || 0, mi = Number(it.min) || 0, se = Number(it.sec) || 0;
+  const a = (s ? s + '세트' : '') + (s && r ? ' × ' : '') + (r ? r + '회' : '');
+  const t = (mi ? mi + '분' : '') + (mi && se ? ' ' : '') + (se ? se + '초' : '');
+  return a + (a && t ? ' · ' : '') + t;
+}
 function setsText(it) {
-  const s = Number(it.sets) || 0, r = Number(it.reps) || 0;
-  if (!s && !r) return '';
-  return ' <span class="pill pill-blue">' + (s ? s + '세트' : '') + (s && r ? ' × ' : '') + (r ? r + '회' : '') + '</span>';
+  const t = doseText(it);
+  return t ? ' <span class="pill pill-blue">' + t + '</span>' : '';
 }
 
 function journalItemsView(items) {
@@ -985,8 +993,8 @@ function composerSession() {
   if (!c) return null;
   return S.sessions.find((x) => x.id === c.sessionId) || S.todaySessions.find((x) => x.id === c.sessionId) || c.session || null;
 }
-const emptyRow = () => ({ exercise: '', sets: '', reps: '', check: '', video: '' });
-const itemToRow = (it) => ({ exercise: it.exercise || '', sets: it.sets || '', reps: it.reps || '', check: it.check || '', video: it.video || '' });
+const emptyRow = () => ({ exercise: '', sets: '', reps: '', min: '', sec: '', check: '', video: '' });
+const itemToRow = (it) => ({ exercise: it.exercise || '', sets: it.sets || '', reps: it.reps || '', min: it.min || '', sec: it.sec || '', check: it.check || '', video: it.video || '' });
 const formVals = (form) => Object.fromEntries(new FormData(form).entries());
 
 function syncComposer() {
@@ -1151,7 +1159,7 @@ const actions = {
           toast('영상 올리는 중… (' + r.fileName + ')');
           await api.upload(video, r.file);
         }
-        items.push({ exercise: r.exercise.trim(), sets: Number(r.sets) || null, reps: Number(r.reps) || null, check: (r.check || '').trim(), video });
+        items.push({ exercise: r.exercise.trim(), sets: Number(r.sets) || null, reps: Number(r.reps) || null, min: Number(r.min) || null, sec: Number(r.sec) || null, check: (r.check || '').trim(), video });
       }
       if (c.journalId) await api.update('journals', c.journalId, { items, updated_at: new Date().toISOString() });
       else await api.insert('journals', [{ session_id: s.id, member_id: s.member_id, trainer_id: s.trainer_id || S.me.id, items }]);
