@@ -275,7 +275,7 @@ function layoutView() {
       '<button type="button" class="btn btn-sm" data-act="refresh"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '새로고침') + '</button></header>' +
       screenView() +
     '</main>' +
-  '</div>' + modalView() + toastView();
+  '</div>' + (S.composer && S.screen !== 'schedule' ? '<div class="modal-back"><div class="modal wide" role="dialog" aria-modal="true" aria-label="수업일지 수정">' + composerView() + '</div></div>' : '') + modalView() + toastView();
 }
 
 function toastView() {
@@ -480,7 +480,7 @@ function sidePanel() {
 
 function composerView() {
   const c = S.composer;
-  const s = S.sessions.find((x) => x.id === c.sessionId) || S.todaySessions.find((x) => x.id === c.sessionId);
+  const s = composerSession();
   const m = s ? memberById(s.member_id) : null;
   const rows = c.rows.map((r, i) => {
     const video = r.file
@@ -509,6 +509,13 @@ function composerView() {
     rows +
     '<button type="button" class="btn btn-outline" data-act="addRow">+ 운동 추가</button>' +
     '<button type="button" class="btn btn-primary btn-lg" data-act="saveJournal"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '일지 저장') + '</button></section>';
+}
+
+function journalTools(j) {
+  const canDel = isAdmin() || j.trainer_id === S.me.id;
+  return '<div class="row gap8 mt8">' +
+    '<button type="button" class="btn btn-sm btn-outline" data-act="editJournalHere" data-id="' + j.session_id + '">수정</button>' +
+    (canDel ? '<button type="button" class="btn btn-sm danger-text" data-act="deleteJournal" data-id="' + j.id + '">삭제</button>' : '') + '</div>';
 }
 
 function setsText(it) {
@@ -571,7 +578,7 @@ function memberDetailView() {
       '<div class="row gap8 wrap"><button type="button" class="btn btn-sm" data-act="editMember" data-id="' + m.id + '">정보 수정</button><button type="button" class="btn btn-sm" data-act="newSessionFor" data-id="' + m.id + '">예약 추가</button><button type="button" class="btn btn-primary btn-sm" data-act="newPass" data-id="' + m.id + '">수강권 등록</button>' + (isAdmin() ? '<button type="button" class="btn btn-sm danger-text" data-act="deleteMember" data-id="' + m.id + '">회원 삭제</button>' : '') + '</div></div>' +
     '<div class="passes">' + passCards + '</div>' +
     '<div class="grid2">' +
-      '<section class="card"><h3 class="h3">수업일지</h3>' + (journals == null ? '<p class="muted small">불러오는 중…</p>' : journals.length ? journals.map((j) => '<div class="j-block"><div class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' ' + (j.session_at ? localTime(j.session_at) : '') + ' · ' + esc(staffName(j.trainer_id)) + '</div>' + journalItemsView(j.items) + '</div>').join('') : '<p class="muted small">아직 일지가 없어요.</p>') + '</section>' +
+      '<section class="card"><h3 class="h3">수업일지</h3>' + (journals == null ? '<p class="muted small">불러오는 중…</p>' : journals.length ? journals.map((j) => '<div class="j-block"><div class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' ' + (j.session_at ? localTime(j.session_at) : '') + ' · ' + esc(staffName(j.trainer_id)) + '</div>' + journalItemsView(j.items) + journalTools(j) + '</div>').join('') : '<p class="muted small">아직 일지가 없어요.</p>') + '</section>' +
       '<div class="stack16">' +
         '<section class="card"><h3 class="h3">다가오는 예약</h3>' + (det == null ? '<p class="muted small">불러오는 중…</p>' : upcoming.length ? upcoming.map((x) => { const pre = det.journals.some((j) => j.session_id === x.id); return '<div class="list-row"><button type="button" class="link grow" style="color:inherit;font-weight:500" data-act="gotoSession" data-id="' + x.id + '" data-d="' + localDate(x.starts_at) + '">' + longDay(localDate(x.starts_at)) + ' ' + localTime(x.starts_at) + ' <span class="muted small">' + esc(staffName(x.trainer_id)) + '</span></button><button type="button" class="btn btn-sm' + (pre ? '' : ' btn-outline') + '" data-act="writeJournal" data-id="' + x.id + '" data-d="' + localDate(x.starts_at) + '">' + (pre ? '미리 쓴 일지 수정' : '일지 미리 쓰기') + '</button></div>'; }).join('') : '<p class="muted small">예약 없음</p>') + '</section>' +
         '<section class="card"><h3 class="h3">결제 내역</h3>' + (pays.length ? pays.map((p) => '<div class="list-row"><span class="grow">' + esc(p.item) + '<br><span class="muted small">' + p.paid_on + ' · ' + esc(p.method) + ' · ' + esc(staffName(p.trainer_id)) + '</span></span><b class="num">' + won(p.amount) + '</b></div>').join('') : '<p class="muted small">' + (canSeeAllPay ? '결제 내역이 없어요.' : '본인 매출로 잡힌 결제만 볼 수 있어요.') + '</p>') + '</section>' +
@@ -585,7 +592,7 @@ function journalListView() {
   const list = (S.journals || []).filter((j) => S.jFilter === 'all' || j.trainer_id === S.jFilter);
   const body = S.journals == null ? '<p class="muted">불러오는 중…</p>' : list.length ? '<div class="cards">' + list.map((j) => {
     const m = memberById(j.member_id);
-    return '<article class="card"><div class="row-between"><button type="button" class="link big" data-act="openMember" data-id="' + j.member_id + '">' + esc(m ? m.name : '?') + '</button><span class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' · ' + esc(staffName(j.trainer_id)) + '</span></div>' + journalItemsView(j.items) + '</article>';
+    return '<article class="card"><div class="row-between"><button type="button" class="link big" data-act="openMember" data-id="' + j.member_id + '">' + esc(m ? m.name : '?') + '</button><span class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' · ' + esc(staffName(j.trainer_id)) + '</span></div>' + journalItemsView(j.items) + journalTools(j) + '</article>';
   }).join('') + '</div>' : '<p class="muted">작성된 일지가 없어요. 예약·출석에서 출석 처리하면 일지를 쓸 수 있어요.</p>';
   return '<div class="stack16"><div class="row gap6 wrap">' + chips + '<span class="muted small ml8">최근 100개</span></div>' + body + '</div>';
 }
@@ -909,6 +916,11 @@ async function goScreen(screen) {
 // =============================================================
 // 동작
 // =============================================================
+function composerSession() {
+  const c = S.composer;
+  if (!c) return null;
+  return S.sessions.find((x) => x.id === c.sessionId) || S.todaySessions.find((x) => x.id === c.sessionId) || c.session || null;
+}
 const emptyRow = () => ({ exercise: '', sets: '', reps: '', check: '', video: '' });
 const itemToRow = (it) => ({ exercise: it.exercise || '', sets: it.sets || '', reps: it.reps || '', check: it.check || '', video: it.video || '' });
 const formVals = (form) => Object.fromEntries(new FormData(form).entries());
@@ -991,10 +1003,23 @@ const actions = {
     S.composer = { sessionId: d.id, journalId: j ? j.id : null, rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
   }),
   closeComposer: () => { S.composer = null; render(); },
+  editJournalHere: (d) => run(async () => {
+    const rows = await api.select('sessions', { select: '*,journals(id,items,trainer_id,updated_at)', filters: [['id', 'eq', d.id]] });
+    const s = rows[0];
+    if (!s) throw new Error('연결된 일정을 찾을 수 없어요.');
+    const j = journalOf(s);
+    S.composer = { sessionId: s.id, session: s, journalId: j ? j.id : null, rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
+  }),
+  deleteJournal: (d) => confirmBox('수업일지 삭제', '이 수업일지를 지울까요? 수업(출석 기록)은 그대로 남아요. 되돌릴 수 없어요.', '삭제', async () => {
+    await api.remove('journals', d.id);
+    await Promise.all([loadSessions(true), loadToday()]);
+    if (S.screen === 'journal') await loadJournals();
+    if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId);
+  }),
   loadLastJournal: () => {
     syncComposer();
     const c = S.composer;
-    const s = S.sessions.find((x) => x.id === c.sessionId) || S.todaySessions.find((x) => x.id === c.sessionId);
+    const s = composerSession();
     if (!s) return;
     run(async () => {
       const list = await api.select('journals', { filters: [['member_id', 'eq', s.member_id]], order: 'updated_at.desc', limit: 10 });
@@ -1020,7 +1045,7 @@ const actions = {
     const c = S.composer;
     const rows = c.rows.filter((r) => r.exercise.trim());
     if (!rows.length) { toast('운동 이름을 하나 이상 입력해 주세요.'); return; }
-    const s = S.sessions.find((x) => x.id === c.sessionId) || S.todaySessions.find((x) => x.id === c.sessionId);
+    const s = composerSession();
     if (!s) { toast('일정을 찾을 수 없어요. 새로고침 후 다시 해 주세요.'); return; }
     run(async () => {
       const items = [];
@@ -1039,6 +1064,7 @@ const actions = {
       S.composer = null;
       await Promise.all([loadSessions(true), loadToday()]);
       if (S.memberDetail && S.memberDetail.memberId === s.member_id) await loadMemberDetail(s.member_id);
+      if (S.screen === 'journal') await loadJournals();
     }, '수업일지를 저장했어요.');
   },
   playVideo: (d) => {

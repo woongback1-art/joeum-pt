@@ -282,3 +282,8 @@ create policy sessions_delete_own on public.sessions for delete to authenticated
 
 -- 수업 기본 시간 60분
 alter table public.sessions alter column duration_min set default 60;
+
+-- 수업일지 삭제: 관리자는 전부, 강사는 본인이 쓴 일지
+drop policy if exists journals_delete_own on public.journals;
+create policy journals_delete_own on public.journals for delete to authenticated
+  using (public.is_staff() and trainer_id = auth.uid());
