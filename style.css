@@ -170,3 +170,4 @@ button.list-row:hover { background: #FAFAF7; }
 }
 
 .warn-card { border-color: #E8B48A; background: #FFF8F1; }
+.btn.icon.sm:disabled { opacity: .3; }

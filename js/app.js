@@ -488,7 +488,14 @@ function composerView() {
       : r.video
         ? '<div class="video-chip"><button type="button" class="btn btn-ghost-dark btn-sm" data-act="playVideo" data-path="' + esc(r.video) + '">▶ 재생</button><span class="grow ellipsis">저장된 영상</span><button type="button" class="btn btn-ghost-dark btn-sm" data-act="clearVideo" data-i="' + i + '">빼기</button></div>'
         : '<label class="upload"><input type="file" accept="video/*" data-video-row="' + i + '">영상 올리기 (휴대폰 촬영본, 50MB 이하)</label>';
-    return '<div class="ex-row"><div class="row-between"><b class="small muted">운동 ' + (i + 1) + '</b>' + (c.rows.length > 1 ? '<button type="button" class="link small" data-act="removeRow" data-i="' + i + '">삭제</button>' : '') + '</div>' +
+    const n = c.rows.length;
+    const tools = n > 1
+      ? '<div class="row gap6">' +
+          '<button type="button" class="btn icon sm" data-act="moveRow" data-i="' + i + '" data-v="-1" aria-label="운동 ' + (i + 1) + ' 위로"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
+          '<button type="button" class="btn icon sm" data-act="moveRow" data-i="' + i + '" data-v="1" aria-label="운동 ' + (i + 1) + ' 아래로"' + (i === n - 1 ? ' disabled' : '') + '>▼</button>' +
+          '<button type="button" class="link small danger-text" data-act="removeRow" data-i="' + i + '">삭제</button></div>'
+      : '';
+    return '<div class="ex-row"><div class="row-between"><b class="small muted">운동 ' + (i + 1) + (r.exercise ? ' · ' + esc(r.exercise) : '') + '</b>' + tools + '</div>' +
       '<label for="ex-name-' + i + '">운동 이름</label><input id="ex-name-' + i + '" list="exercise-list" data-row="' + i + '" data-field="exercise" value="' + esc(r.exercise) + '" placeholder="예: 스쿼트">' +
       '<div class="row gap8"><div class="grow stack4"><label for="ex-sets-' + i + '">세트</label><input id="ex-sets-' + i + '" type="number" inputmode="numeric" min="0" max="99" data-row="' + i + '" data-field="sets" value="' + esc(r.sets || '') + '" placeholder="3"></div>' +
       '<div class="grow stack4"><label for="ex-reps-' + i + '">횟수</label><input id="ex-reps-' + i + '" type="number" inputmode="numeric" min="0" max="999" data-row="' + i + '" data-field="reps" value="' + esc(r.reps || '') + '" placeholder="12"></div></div>' +
@@ -999,6 +1006,13 @@ const actions = {
     });
   },
   addRow: () => { syncComposer(); S.composer.rows.push(emptyRow()); render(); },
+  moveRow: (d) => {
+    syncComposer();
+    const rows = S.composer.rows, i = Number(d.i), j = i + Number(d.v);
+    if (j < 0 || j >= rows.length) return;
+    [rows[i], rows[j]] = [rows[j], rows[i]];
+    render();
+  },
   removeRow: (d) => { syncComposer(); S.composer.rows.splice(Number(d.i), 1); render(); },
   clearVideo: (d) => { syncComposer(); const r = S.composer.rows[Number(d.i)]; r.file = null; r.fileName = ''; r.video = ''; render(); },
   saveJournal: () => {
