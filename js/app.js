@@ -61,6 +61,7 @@ const S = {
   sessions: [],
   sessionsRange: '',
   todaySessions: [],
+  unchecked: [], // 시간이 지났는데 출석 처리 안 된 예약 (최근 30일)
   // 화면 상태
   calView: 'week',
   calDate: todayStr(),
@@ -249,7 +250,7 @@ const TITLES = { home: '오늘의 센터', schedule: '예약·출석', members: 
 
 function layoutView() {
   const today = todayStr();
-  const pendingToday = S.todaySessions.filter((s) => s.status === 'reserved').length;
+  const pendingToday = S.todaySessions.filter((s) => s.status === 'reserved').length + S.unchecked.filter((s) => localDate(s.starts_at) !== todayStr() && (isAdmin() || s.trainer_id === S.me.id)).length;
   const missing = S.todaySessions.filter((s) => s.status === 'done' && !journalOf(s)).length;
   const pendingStaff = S.profiles.filter((p) => p.role === 'pending').length;
   const nav = NAV.filter((n) => !n.adminOnly || isAdmin()).map((n) => {
@@ -298,6 +299,7 @@ function homeView() {
   const done = list.filter((s) => s.status === 'done').length;
   const reserved = list.filter((s) => s.status === 'reserved').length;
   const missing = list.filter((s) => s.status === 'done' && !journalOf(s));
+  const unchecked = S.unchecked.filter((s) => isAdmin() || s.trainer_id === S.me.id);
   const expiring = S.members.map((m) => ({ m, st: memberState(m.id) })).filter((x) => x.st.key === 'soon' || x.st.key === 'expired');
   const month = todayStr().slice(0, 7);
   const monthPays = S.payments.filter((p) => p.paid_on.slice(0, 7) === month);
@@ -330,6 +332,7 @@ function homeView() {
     '<div class="grid2">' +
       '<section class="card"><div class="card-head"><h2 class="h3">오늘 수업</h2><button type="button" class="link" data-act="go" data-v="schedule">예약·출석 열기</button></div>' + todayRows + '</section>' +
       '<div class="stack16">' +
+        (unchecked.length ? '<section class="card warn-card"><h2 class="h3">출석 처리 안 된 지난 수업 ' + unchecked.length + '건</h2><p class="muted small">출석 처리해야 수강권이 차감되고 수업료에 들어가요.</p>' + unchecked.map((s) => { const m = memberById(s.member_id); return '<div class="list-row"><span class="grow"><b>' + esc(m ? m.name : '?') + '</b> <span class="muted small">' + longDay(localDate(s.starts_at)) + ' ' + localTime(s.starts_at) + ' · ' + esc(staffName(s.trainer_id)) + '</span></span><button type="button" class="btn btn-sm btn-primary" data-act="setStatus" data-id="' + s.id + '" data-v="done">출석</button><button type="button" class="btn btn-sm" data-act="setStatus" data-id="' + s.id + '" data-v="noshow">노쇼</button></div>'; }).join('') + '</section>' : '') +
         '<section class="card"><h2 class="h3">수업일지 미작성</h2>' + missRows + '</section>' +
         '<section class="card"><h2 class="h3">수강권 만료·임박 회원</h2>' + expRows + '</section>' +
         '<section class="card"><div class="card-head"><h2 class="h3">할 일</h2><button type="button" class="link" data-act="go" data-v="board">전체 보기</button></div>' + taskRows + '</section>' +
@@ -586,7 +589,7 @@ function payView() {
     '<div class="hscroll"><table class="tbl"><thead><tr><th>강사</th><th class="r">수업</th><th class="r">회당</th><th class="r">수업료</th><th class="r">3.3% 공제</th><th class="r">실지급액</th></tr></thead><tbody>' +
     (rows.length ? rows.map(tr).join('') : '<tr><td colspan="6" class="muted">이 달 출석 처리된 수업이 없어요.</td></tr>') +
     (isAdmin() && rows.length > 1 ? '<tr><td><b>합계</b></td><td class="r num">' + sum.count + '회</td><td></td><td class="r num">' + won(sum.gross) + '</td><td class="r num">-' + won(sum.tax) + '</td><td class="r num"><b>' + won(sum.net) + '</b></td></tr>' : '') +
-    '</tbody></table></div><p class="muted small">3.3% = 소득세 3% + 지방소득세 0.3% (10원 미만 버림). 노쇼·취소 수업은 빠져요.' + (isAdmin() ? ' 회당 금액은 직원 관리에서 강사별로 바꿀 수 있어요.' : '') + '</p></section>';
+    '</tbody></table></div>' + (() => { const n = S.unchecked.filter((s) => (isAdmin() || s.trainer_id === S.me.id) && s.starts_at.slice(0, 7) <= S.salesMonth).length; return n ? '<p class="form-err">출석 처리 안 된 지난 수업이 ' + n + '건 있어요. 대시보드에서 출석 처리하면 수업료에 들어가요.</p>' : ''; })() + '<p class="muted small">3.3% = 소득세 3% + 지방소득세 0.3% (10원 미만 버림). 노쇼·취소 수업은 빠져요.' + (isAdmin() ? ' 회당 금액은 직원 관리에서 강사별로 바꿀 수 있어요.' : '') + '</p></section>';
 }
 
 // ---------- 매출 ----------
@@ -805,7 +808,16 @@ async function loadSessions(force) {
   S.sessionsRange = key;
 }
 
+async function loadUnchecked() {
+  S.unchecked = await api.select('sessions', {
+    select: 'id,member_id,trainer_id,starts_at,status',
+    filters: [['status', 'eq', 'reserved'], ['starts_at', 'lt', new Date().toISOString()], ['starts_at', 'gte', new Date(addDays(todayStr(), -30) + 'T00:00:00').toISOString()]],
+    order: 'starts_at.desc',
+  });
+}
+
 async function loadToday() {
+  await loadUnchecked();
   const t = todayStr();
   S.todaySessions = await api.select('sessions', {
     select: '*,journals(id,items,trainer_id,updated_at)',
@@ -922,8 +934,9 @@ const actions = {
   setStatus: (d) => run(async () => {
     await api.update('sessions', d.id, { status: d.v });
     await refreshAfterSessionChange();
+    if (S.screen === 'sales') await loadMonthDone();
     const s = S.sessions.find((x) => x.id === d.id) || S.todaySessions.find((x) => x.id === d.id);
-    if (d.v === 'done' && s && !journalOf(s)) S.composer = { sessionId: s.id, journalId: null, rows: [{ exercise: '', check: '', video: '' }] };
+    if (d.v === 'done' && s && !journalOf(s) && S.screen === 'schedule') S.composer = { sessionId: s.id, journalId: null, rows: [{ exercise: '', check: '', video: '' }] };
     toast({ done: '출석 처리 · 수강권 1회 차감', noshow: '노쇼 처리 (차감 안 함)', canceled: '예약을 취소했어요', reserved: '예약 상태로 되돌렸어요' }[d.v]);
   }),
 

@@ -168,3 +168,5 @@ button.list-row:hover { background: #FAFAF7; }
   .list-pane { max-width: none; }
   .h1 { font-size: 20px; }
 }
+
+.warn-card { border-color: #E8B48A; background: #FFF8F1; }
