@@ -295,7 +295,7 @@ function seedMock() {
     { member: 1, day: addDays(3), hh: '11:00', status: 'reserved' },
   ].map((s) => ({
     id: uuid(), member_id: members[s.member].id, trainer_id: members[s.member].trainer_id, pass_id: passes[s.member].id,
-    starts_at: at(s.day, s.hh), duration_min: 50, status: s.status, created_at: now.toISOString(),
+    starts_at: at(s.day, s.hh), duration_min: 60, status: s.status, created_at: now.toISOString(),
   }));
   const journals = [{
     id: uuid(), session_id: sessions[0].id, member_id: members[0].id, trainer_id: t1.id,

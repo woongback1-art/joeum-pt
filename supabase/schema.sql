@@ -103,7 +103,7 @@ create table if not exists public.sessions (
   trainer_id uuid references public.profiles(id) on delete set null,
   pass_id uuid references public.passes(id) on delete set null,
   starts_at timestamptz not null,
-  duration_min int not null default 50,
+  duration_min int not null default 60,
   status text not null default 'reserved' check (status in ('reserved', 'done', 'noshow', 'canceled')),
   created_at timestamptz not null default now()
 );
@@ -279,3 +279,6 @@ alter table public.profiles add column if not exists session_pay int not null de
 drop policy if exists sessions_delete_own on public.sessions;
 create policy sessions_delete_own on public.sessions for delete to authenticated
   using (public.is_staff() and trainer_id = auth.uid());
+
+-- 수업 기본 시간 60분
+alter table public.sessions alter column duration_min set default 60;

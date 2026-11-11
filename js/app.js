@@ -399,7 +399,7 @@ function weekView(ws) {
     }
     for (const s of evs) {
       const top = (minutesOf(s.starts_at) - CAL_START * 60) / 60 * HOUR_PX + 2;
-      const h = Math.max(28, (s.duration_min || 50) / 60 * HOUR_PX - 4);
+      const h = Math.max(28, (s.duration_min || 60) / 60 * HOUR_PX - 4);
       const m = memberById(s.member_id);
       const tag = s.status === 'done' ? ' · 출석' : s.status === 'noshow' ? ' · 노쇼' : s.status === 'canceled' ? ' · 취소' : '';
       inner += '<button type="button" class="ev" data-act="openSession" data-id="' + s.id + '" style="top:' + top + 'px;height:' + h + 'px;' + sessionBlockStyle(s, s.id === S.selSessionId) + '"><b' + (s.status === 'canceled' ? ' class="strike"' : '') + '>' + localTime(s.starts_at) + ' ' + esc(m ? m.name : '?') + '</b><span>' + esc(staffName(s.trainer_id)) + tag + '</span></button>';
@@ -459,7 +459,7 @@ function sidePanel() {
     html += '<section class="card stack" aria-label="선택한 일정">' +
       '<div class="row-between"><span class="pill ' + st.cls + '">' + st.label + '</span><button type="button" class="btn icon sm" data-act="closeSession" aria-label="닫기">×</button></div>' +
       '<div><button type="button" class="link big" data-act="openMember" data-id="' + s.member_id + '">' + esc(m ? m.name : '?') + '</button>' +
-      '<div class="muted small">' + longDay(d) + ' ' + localTime(s.starts_at) + ' · ' + esc(staffName(s.trainer_id)) + ' · ' + (s.duration_min || 50) + '분</div>' +
+      '<div class="muted small">' + longDay(d) + ' ' + localTime(s.starts_at) + ' · ' + esc(staffName(s.trainer_id)) + ' · ' + (s.duration_min || 60) + '분</div>' +
       '<div class="muted small">' + (pass ? esc(pass.name) + ' · 잔여 ' + info.remain + '회' : '연결된 수강권 없음') + '</div></div>' +
       actions + jhtml + '</section>';
   }
@@ -695,7 +695,7 @@ function modalView() {
     body = (S.members.length ? field('ss-member', '회원', '<select id="ss-member" name="member_id" required><option value="">회원 선택</option>' + memberOptions(memberId) + '</select>') : '<p class="form-err">먼저 회원·수강권 화면에서 회원을 등록해 주세요.</p>') +
       field('ss-trainer', '담당 강사', '<select id="ss-trainer" name="trainer_id">' + trainerOptions(trainerId) + '</select>') +
       '<div class="row gap8"><div class="grow stack4">' + field('ss-date', '날짜', '<input id="ss-date" name="date" type="date" required value="' + date + '">') + '</div><div class="grow stack4">' + field('ss-time', '시간', '<select id="ss-time" name="time">' + times.sort().map((t) => '<option' + (t === time ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + '</div></div>' +
-      field('ss-dur', '수업 시간(분)', '<input id="ss-dur" name="duration_min" type="number" min="10" max="240" step="5" value="' + (s ? s.duration_min : 50) + '">') +
+      field('ss-dur', '수업 시간(분)', '<input id="ss-dur" name="duration_min" type="number" min="10" max="240" step="5" value="' + (s ? s.duration_min : 60) + '">') +
       (s ? '' : field('ss-rep', '매주 같은 시간 반복', '<select id="ss-rep" name="repeat">' + [1, 2, 4, 8, 12].map((n) => '<option value="' + n + '">' + (n === 1 ? '한 번만' : n + '주 동안') + '</option>').join('') + '</select>')) +
       '<p class="muted small">회원의 이용 중인 수강권에 자동으로 연결돼요. 출석 처리하면 1회 차감돼요.</p>';
   } else if (md_.type === 'member') {
@@ -1069,11 +1069,11 @@ const submits = {
     const s = S.modal.session;
     const pass = activePass(v.member_id);
     if (s) {
-      await api.update('sessions', s.id, { member_id: v.member_id, trainer_id: v.trainer_id, starts_at: toIso(v.date, v.time), duration_min: Number(v.duration_min) || 50, pass_id: s.member_id === v.member_id ? s.pass_id : pass ? pass.id : null });
+      await api.update('sessions', s.id, { member_id: v.member_id, trainer_id: v.trainer_id, starts_at: toIso(v.date, v.time), duration_min: Number(v.duration_min) || 60, pass_id: s.member_id === v.member_id ? s.pass_id : pass ? pass.id : null });
     } else {
       const n = Number(v.repeat) || 1;
       const rows = [];
-      for (let i = 0; i < n; i++) rows.push({ member_id: v.member_id, trainer_id: v.trainer_id, pass_id: pass ? pass.id : null, starts_at: toIso(addDays(v.date, 7 * i), v.time), duration_min: Number(v.duration_min) || 50, status: 'reserved' });
+      for (let i = 0; i < n; i++) rows.push({ member_id: v.member_id, trainer_id: v.trainer_id, pass_id: pass ? pass.id : null, starts_at: toIso(addDays(v.date, 7 * i), v.time), duration_min: Number(v.duration_min) || 60, status: 'reserved' });
       await api.insert('sessions', rows);
     }
     S.modal = null;
