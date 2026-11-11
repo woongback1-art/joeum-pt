@@ -452,7 +452,10 @@ function sidePanel() {
     let jhtml = '';
     if (s.status === 'done') {
       jhtml = (j ? journalItemsView(j.items) : '<p class="muted small">아직 일지가 없어요.</p>') +
-        '<button type="button" class="btn ' + (j ? 'btn-outline' : 'btn-primary') + '" data-act="writeJournal" data-id="' + s.id + '">' + (j ? '일지 수정' : '일지 쓰기') + '</button>';
+        '<button type="button" class="btn ' + (j ? 'btn-outline' : 'btn-primary') + '" data-act="writeJournal" data-id="' + s.id + '" data-d="' + d + '">' + (j ? '일지 수정' : '일지 쓰기') + '</button>';
+    } else if (s.status === 'reserved') {
+      jhtml = (j ? '<div class="small b">미리 써 둔 수업일지</div>' + journalItemsView(j.items) : '') +
+        '<button type="button" class="btn btn-outline" data-act="writeJournal" data-id="' + s.id + '" data-d="' + d + '">' + (j ? '미리 쓴 일지 수정' : '수업일지 미리 쓰기') + '</button>';
     }
     const canDelete = isAdmin() || s.trainer_id === S.me.id;
     if (canDelete) jhtml += '<button type="button" class="link small left danger-text" data-act="deleteSession" data-id="' + s.id + '">이 일정 삭제</button>';
@@ -485,21 +488,30 @@ function composerView() {
         : '<label class="upload"><input type="file" accept="video/*" data-video-row="' + i + '">영상 올리기 (휴대폰 촬영본, 50MB 이하)</label>';
     return '<div class="ex-row"><div class="row-between"><b class="small muted">운동 ' + (i + 1) + '</b>' + (c.rows.length > 1 ? '<button type="button" class="link small" data-act="removeRow" data-i="' + i + '">삭제</button>' : '') + '</div>' +
       '<label for="ex-name-' + i + '">운동 이름</label><input id="ex-name-' + i + '" list="exercise-list" data-row="' + i + '" data-field="exercise" value="' + esc(r.exercise) + '" placeholder="예: 스쿼트">' +
+      '<div class="row gap8"><div class="grow stack4"><label for="ex-sets-' + i + '">세트</label><input id="ex-sets-' + i + '" type="number" inputmode="numeric" min="0" max="99" data-row="' + i + '" data-field="sets" value="' + esc(r.sets || '') + '" placeholder="3"></div>' +
+      '<div class="grow stack4"><label for="ex-reps-' + i + '">횟수</label><input id="ex-reps-' + i + '" type="number" inputmode="numeric" min="0" max="999" data-row="' + i + '" data-field="reps" value="' + esc(r.reps || '') + '" placeholder="12"></div></div>' +
       '<span class="lbl">운동 영상</span>' + video +
-      '<label for="ex-check-' + i + '">체크사항</label><textarea id="ex-check-' + i + '" rows="2" data-row="' + i + '" data-field="check" placeholder="자세 피드백, 중량·횟수, 다음에 볼 점">' + esc(r.check) + '</textarea></div>';
+      '<label for="ex-check-' + i + '">체크사항</label><textarea id="ex-check-' + i + '" rows="2" data-row="' + i + '" data-field="check" placeholder="자세 피드백, 중량, 다음에 볼 점">' + esc(r.check) + '</textarea></div>';
   }).join('');
   return '<section class="card stack composer" aria-label="수업일지 작성">' +
-    '<div class="row-between"><div><h2 class="h3">수업일지 · ' + esc(m ? m.name : '') + '</h2><div class="muted small">' + (s ? longDay(localDate(s.starts_at)) + ' ' + localTime(s.starts_at) + ' · ' + esc(staffName(s.trainer_id)) : '') + '</div>' + (m && m.goal ? '<div class="muted small">목표: ' + esc(m.goal) + '</div>' : '') + '</div><button type="button" class="btn btn-sm" data-act="closeComposer">닫기</button></div>' +
+    '<div class="row-between"><div><h2 class="h3">' + (s && s.status === 'reserved' ? '수업일지 미리 쓰기 · ' : '수업일지 · ') + esc(m ? m.name : '') + '</h2><div class="muted small">' + (s ? longDay(localDate(s.starts_at)) + ' ' + localTime(s.starts_at) + ' · ' + esc(staffName(s.trainer_id)) : '') + '</div>' + (m && m.goal ? '<div class="muted small">목표: ' + esc(m.goal) + '</div>' : '') + '</div><button type="button" class="btn btn-sm" data-act="closeComposer">닫기</button></div>' +
     '<datalist id="exercise-list">' + ['스쿼트', '데드리프트', '벤치프레스', '랫풀다운', '시티드 로우', '런지', '힙브릿지', '플랭크', '레그프레스', '숄더프레스'].map((x) => '<option value="' + x + '"></option>').join('') + '</datalist>' +
+    '<button type="button" class="btn btn-sm left" data-act="loadLastJournal">지난 일지 불러오기</button>' +
     rows +
     '<button type="button" class="btn btn-outline" data-act="addRow">+ 운동 추가</button>' +
     '<button type="button" class="btn btn-primary btn-lg" data-act="saveJournal"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '일지 저장') + '</button></section>';
 }
 
+function setsText(it) {
+  const s = Number(it.sets) || 0, r = Number(it.reps) || 0;
+  if (!s && !r) return '';
+  return ' <span class="pill pill-blue">' + (s ? s + '세트' : '') + (s && r ? ' × ' : '') + (r ? r + '회' : '') + '</span>';
+}
+
 function journalItemsView(items) {
   return '<div class="j-items">' + (items || []).map((it) =>
     '<div class="j-item">' + (it.video ? '<button type="button" class="play" data-act="playVideo" data-path="' + esc(it.video) + '" aria-label="' + esc(it.exercise) + ' 영상 재생">▶</button>' : '') +
-    '<div class="grow"><b>' + esc(it.exercise) + '</b>' + (it.check ? '<div class="small pre">' + esc(it.check) + '</div>' : '') + '</div></div>').join('') + '</div>';
+    '<div class="grow"><b>' + esc(it.exercise) + '</b>' + setsText(it) + (it.check ? '<div class="small pre">' + esc(it.check) + '</div>' : '') + '</div></div>').join('') + '</div>';
 }
 
 // ---------- 회원 ----------
@@ -550,9 +562,9 @@ function memberDetailView() {
       '<div class="row gap8 wrap"><button type="button" class="btn btn-sm" data-act="editMember" data-id="' + m.id + '">정보 수정</button><button type="button" class="btn btn-sm" data-act="newSessionFor" data-id="' + m.id + '">예약 추가</button><button type="button" class="btn btn-primary btn-sm" data-act="newPass" data-id="' + m.id + '">수강권 등록</button>' + (isAdmin() ? '<button type="button" class="btn btn-sm danger-text" data-act="deleteMember" data-id="' + m.id + '">회원 삭제</button>' : '') + '</div></div>' +
     '<div class="passes">' + passCards + '</div>' +
     '<div class="grid2">' +
-      '<section class="card"><h3 class="h3">수업일지</h3>' + (journals == null ? '<p class="muted small">불러오는 중…</p>' : journals.length ? journals.map((j) => '<div class="j-block"><div class="muted small">' + md(localDate(j.session_at || j.created_at)) + ' ' + (j.session_at ? localTime(j.session_at) : '') + ' · ' + esc(staffName(j.trainer_id)) + '</div>' + journalItemsView(j.items) + '</div>').join('') : '<p class="muted small">아직 일지가 없어요.</p>') + '</section>' +
+      '<section class="card"><h3 class="h3">수업일지</h3>' + (journals == null ? '<p class="muted small">불러오는 중…</p>' : journals.length ? journals.map((j) => '<div class="j-block"><div class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' ' + (j.session_at ? localTime(j.session_at) : '') + ' · ' + esc(staffName(j.trainer_id)) + '</div>' + journalItemsView(j.items) + '</div>').join('') : '<p class="muted small">아직 일지가 없어요.</p>') + '</section>' +
       '<div class="stack16">' +
-        '<section class="card"><h3 class="h3">다가오는 예약</h3>' + (det == null ? '<p class="muted small">불러오는 중…</p>' : upcoming.length ? upcoming.map((x) => '<button type="button" class="list-row" data-act="gotoSession" data-id="' + x.id + '" data-d="' + localDate(x.starts_at) + '"><span class="grow">' + longDay(localDate(x.starts_at)) + ' ' + localTime(x.starts_at) + '</span><span class="muted small">' + esc(staffName(x.trainer_id)) + '</span></button>').join('') : '<p class="muted small">예약 없음</p>') + '</section>' +
+        '<section class="card"><h3 class="h3">다가오는 예약</h3>' + (det == null ? '<p class="muted small">불러오는 중…</p>' : upcoming.length ? upcoming.map((x) => { const pre = det.journals.some((j) => j.session_id === x.id); return '<div class="list-row"><button type="button" class="link grow" style="color:inherit;font-weight:500" data-act="gotoSession" data-id="' + x.id + '" data-d="' + localDate(x.starts_at) + '">' + longDay(localDate(x.starts_at)) + ' ' + localTime(x.starts_at) + ' <span class="muted small">' + esc(staffName(x.trainer_id)) + '</span></button><button type="button" class="btn btn-sm' + (pre ? '' : ' btn-outline') + '" data-act="writeJournal" data-id="' + x.id + '" data-d="' + localDate(x.starts_at) + '">' + (pre ? '미리 쓴 일지 수정' : '일지 미리 쓰기') + '</button></div>'; }).join('') : '<p class="muted small">예약 없음</p>') + '</section>' +
         '<section class="card"><h3 class="h3">결제 내역</h3>' + (pays.length ? pays.map((p) => '<div class="list-row"><span class="grow">' + esc(p.item) + '<br><span class="muted small">' + p.paid_on + ' · ' + esc(p.method) + ' · ' + esc(staffName(p.trainer_id)) + '</span></span><b class="num">' + won(p.amount) + '</b></div>').join('') : '<p class="muted small">' + (canSeeAllPay ? '결제 내역이 없어요.' : '본인 매출로 잡힌 결제만 볼 수 있어요.') + '</p>') + '</section>' +
       '</div></div></div>';
 }
@@ -564,7 +576,7 @@ function journalListView() {
   const list = (S.journals || []).filter((j) => S.jFilter === 'all' || j.trainer_id === S.jFilter);
   const body = S.journals == null ? '<p class="muted">불러오는 중…</p>' : list.length ? '<div class="cards">' + list.map((j) => {
     const m = memberById(j.member_id);
-    return '<article class="card"><div class="row-between"><button type="button" class="link big" data-act="openMember" data-id="' + j.member_id + '">' + esc(m ? m.name : '?') + '</button><span class="muted small">' + md(localDate(j.session_at || j.created_at)) + ' · ' + esc(staffName(j.trainer_id)) + '</span></div>' + journalItemsView(j.items) + '</article>';
+    return '<article class="card"><div class="row-between"><button type="button" class="link big" data-act="openMember" data-id="' + j.member_id + '">' + esc(m ? m.name : '?') + '</button><span class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' · ' + esc(staffName(j.trainer_id)) + '</span></div>' + journalItemsView(j.items) + '</article>';
   }).join('') + '</div>' : '<p class="muted">작성된 일지가 없어요. 예약·출석에서 출석 처리하면 일지를 쓸 수 있어요.</p>';
   return '<div class="stack16"><div class="row gap6 wrap">' + chips + '<span class="muted small ml8">최근 100개</span></div>' + body + '</div>';
 }
@@ -888,6 +900,8 @@ async function goScreen(screen) {
 // =============================================================
 // 동작
 // =============================================================
+const emptyRow = () => ({ exercise: '', sets: '', reps: '', check: '', video: '' });
+const itemToRow = (it) => ({ exercise: it.exercise || '', sets: it.sets || '', reps: it.reps || '', check: it.check || '', video: it.video || '' });
 const formVals = (form) => Object.fromEntries(new FormData(form).entries());
 
 function syncComposer() {
@@ -951,7 +965,7 @@ const actions = {
     await refreshAfterSessionChange();
     if (S.screen === 'sales') await loadMonthDone();
     const s = S.sessions.find((x) => x.id === d.id) || S.todaySessions.find((x) => x.id === d.id);
-    if (d.v === 'done' && s && !journalOf(s) && S.screen === 'schedule') S.composer = { sessionId: s.id, journalId: null, rows: [{ exercise: '', check: '', video: '' }] };
+    if (d.v === 'done' && s && !journalOf(s) && S.screen === 'schedule') S.composer = { sessionId: s.id, journalId: null, rows: [emptyRow()] };
     toast({ done: '출석 처리 · 수강권 1회 차감', noshow: '노쇼 처리 (차감 안 함)', canceled: '예약을 취소했어요', reserved: '예약 상태로 되돌렸어요' }[d.v]);
   }),
 
@@ -960,14 +974,29 @@ const actions = {
     S.screen = 'schedule';
     let s = S.sessions.find((x) => x.id === d.id) || S.todaySessions.find((x) => x.id === d.id);
     if (s) S.calDate = localDate(s.starts_at);
+    else if (d.d) S.calDate = d.d;
     await loadSessions();
     s = S.sessions.find((x) => x.id === d.id) || s;
     const j = s ? journalOf(s) : null;
     S.selSessionId = d.id;
-    S.composer = { sessionId: d.id, journalId: j ? j.id : null, rows: j && j.items.length ? j.items.map((it) => ({ exercise: it.exercise, check: it.check || '', video: it.video || '' })) : [{ exercise: '', check: '', video: '' }] };
+    S.composer = { sessionId: d.id, journalId: j ? j.id : null, rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
   }),
   closeComposer: () => { S.composer = null; render(); },
-  addRow: () => { syncComposer(); S.composer.rows.push({ exercise: '', check: '', video: '' }); render(); setTimeout(() => { const el = document.getElementById('ex-name-' + (S.composer.rows.length - 1)); if (el) el.focus(); }, 50); },
+  loadLastJournal: () => {
+    syncComposer();
+    const c = S.composer;
+    const s = S.sessions.find((x) => x.id === c.sessionId) || S.todaySessions.find((x) => x.id === c.sessionId);
+    if (!s) return;
+    run(async () => {
+      const list = await api.select('journals', { filters: [['member_id', 'eq', s.member_id]], order: 'updated_at.desc', limit: 10 });
+      const last = list.find((j) => j.session_id !== s.id && (j.items || []).length);
+      if (!last) { toast('이 회원의 지난 일지가 없어요.'); return; }
+      const keep = c.rows.filter((r) => r.exercise.trim());
+      c.rows = keep.concat(last.items.map((it) => Object.assign(itemToRow(it), { video: '' })));
+      toast('지난 일지의 운동 ' + last.items.length + '개를 불러왔어요. 영상은 빼고 가져와요.');
+    });
+  },
+  addRow: () => { syncComposer(); S.composer.rows.push(emptyRow()); render(); },
   removeRow: (d) => { syncComposer(); S.composer.rows.splice(Number(d.i), 1); render(); },
   clearVideo: (d) => { syncComposer(); const r = S.composer.rows[Number(d.i)]; r.file = null; r.fileName = ''; r.video = ''; render(); },
   saveJournal: () => {
@@ -976,6 +1005,7 @@ const actions = {
     const rows = c.rows.filter((r) => r.exercise.trim());
     if (!rows.length) { toast('운동 이름을 하나 이상 입력해 주세요.'); return; }
     const s = S.sessions.find((x) => x.id === c.sessionId) || S.todaySessions.find((x) => x.id === c.sessionId);
+    if (!s) { toast('일정을 찾을 수 없어요. 새로고침 후 다시 해 주세요.'); return; }
     run(async () => {
       const items = [];
       for (const r of rows) {
@@ -986,7 +1016,7 @@ const actions = {
           toast('영상 올리는 중… (' + r.fileName + ')');
           await api.upload(video, r.file);
         }
-        items.push({ exercise: r.exercise.trim(), check: (r.check || '').trim(), video });
+        items.push({ exercise: r.exercise.trim(), sets: Number(r.sets) || null, reps: Number(r.reps) || null, check: (r.check || '').trim(), video });
       }
       if (c.journalId) await api.update('journals', c.journalId, { items, updated_at: new Date().toISOString() });
       else await api.insert('journals', [{ session_id: s.id, member_id: s.member_id, trainer_id: s.trainer_id || S.me.id, items }]);
