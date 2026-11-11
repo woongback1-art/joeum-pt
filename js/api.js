@@ -272,9 +272,9 @@ function seedMock() {
   const now = new Date();
   const today = ymd(now);
   const addDays = (n) => { const d = new Date(now); d.setDate(d.getDate() + n); return ymd(d); };
-  const admin = { id: 'u-admin', name: '원장', email: 'admin@demo', role: 'admin', color: '#23634A', created_at: now.toISOString() };
-  const t1 = { id: 'u-t1', name: '장정웅', email: 'trainer@demo', role: 'trainer', color: '#2F6DB0', created_at: now.toISOString() };
-  const t2 = { id: 'u-t2', name: '이서연', email: 'trainer2@demo', role: 'trainer', color: '#B4561A', created_at: now.toISOString() };
+  const admin = { id: 'u-admin', name: '원장', email: 'admin@demo', role: 'admin', color: '#23634A', session_pay: 30000, created_at: now.toISOString() };
+  const t1 = { id: 'u-t1', name: '장정웅', email: 'trainer@demo', role: 'trainer', color: '#2F6DB0', session_pay: 30000, created_at: now.toISOString() };
+  const t2 = { id: 'u-t2', name: '이서연', email: 'trainer2@demo', role: 'trainer', color: '#B4561A', session_pay: 30000, created_at: now.toISOString() };
   const members = [
     { id: uuid(), name: '정하늘', phone: '010-1234-5678', trainer_id: t1.id, goal: '거북목·라운드숄더 교정', memo: '' },
     { id: uuid(), name: '최민지', phone: '010-2231-0000', trainer_id: t2.id, goal: '체지방 감량', memo: '' },

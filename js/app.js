@@ -74,6 +74,7 @@ const S = {
   journals: null,
   jFilter: 'all',
   salesMonth: todayStr().slice(0, 7),
+  monthDone: null, // 이번 달 출석 처리된 수업 (수업료 계산용)
   openPost: null,
   modal: null,
 };
@@ -563,6 +564,31 @@ function journalListView() {
   return '<div class="stack16"><div class="row gap6 wrap">' + chips + '<span class="muted small ml8">최근 100개</span></div>' + body + '</div>';
 }
 
+// ---------- 강사 수업료 (프리랜서 3.3%) ----------
+// 소득세 3% (10원 미만 버림) + 지방소득세 = 소득세의 10% (10원 미만 버림)
+function freelancePay(count, rate) {
+  const gross = count * rate;
+  const incomeTax = Math.floor(gross * 0.03 / 10) * 10;
+  const localTax = Math.floor(incomeTax * 0.1 / 10) * 10;
+  return { gross, tax: incomeTax + localTax, incomeTax, localTax, net: gross - incomeTax - localTax };
+}
+const payRate = (p) => (p && Number(p.session_pay)) || 30000;
+
+function payView() {
+  if (S.monthDone == null) return '<section class="card"><h3 class="h3">수업료 (프리랜서)</h3><p class="muted small">불러오는 중…</p></section>';
+  const rows = trainers().filter((p) => isAdmin() || p.id === S.me.id).map((p) => {
+    const count = S.monthDone.filter((x) => x.trainer_id === p.id).length;
+    return Object.assign({ p, count, rate: payRate(p) }, freelancePay(count, payRate(p)));
+  }).filter((r) => r.count > 0 || r.p.role === 'trainer' || r.p.id === S.me.id);
+  const sum = rows.reduce((a, r) => ({ gross: a.gross + r.gross, tax: a.tax + r.tax, net: a.net + r.net, count: a.count + r.count }), { gross: 0, tax: 0, net: 0, count: 0 });
+  const tr = (r) => '<tr><td><b>' + esc(r.p.name) + '</b></td><td class="r num">' + r.count + '회</td><td class="r num">' + won(r.rate) + '</td><td class="r num">' + won(r.gross) + '</td><td class="r num">-' + won(r.tax) + '</td><td class="r num"><b>' + won(r.net) + '</b></td></tr>';
+  return '<section class="card"><div class="row-between"><h3 class="h3">' + (isAdmin() ? '강사 수업료 (프리랜서)' : '내 수업료 (프리랜서)') + '</h3><span class="muted small">출석 처리된 수업 기준</span></div>' +
+    '<div class="hscroll"><table class="tbl"><thead><tr><th>강사</th><th class="r">수업</th><th class="r">회당</th><th class="r">수업료</th><th class="r">3.3% 공제</th><th class="r">실지급액</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(tr).join('') : '<tr><td colspan="6" class="muted">이 달 출석 처리된 수업이 없어요.</td></tr>') +
+    (isAdmin() && rows.length > 1 ? '<tr><td><b>합계</b></td><td class="r num">' + sum.count + '회</td><td></td><td class="r num">' + won(sum.gross) + '</td><td class="r num">-' + won(sum.tax) + '</td><td class="r num"><b>' + won(sum.net) + '</b></td></tr>' : '') +
+    '</tbody></table></div><p class="muted small">3.3% = 소득세 3% + 지방소득세 0.3% (10원 미만 버림). 노쇼·취소 수업은 빠져요.' + (isAdmin() ? ' 회당 금액은 직원 관리에서 강사별로 바꿀 수 있어요.' : '') + '</p></section>';
+}
+
 // ---------- 매출 ----------
 function salesView() {
   const month = S.salesMonth;
@@ -577,7 +603,8 @@ function salesView() {
       '<div class="card kpi"><div class="muted small">' + (isAdmin() ? '매출' : '내 매출') + '</div><div class="kpi-v">' + won(total) + '</div></div>' +
       '<div class="card kpi"><div class="muted small">결제 건수</div><div class="kpi-v">' + pays.length + '건</div></div>' +
       '<div class="card kpi"><div class="muted small">객단가</div><div class="kpi-v">' + won(pays.length ? Math.round(total / pays.length) : 0) + '</div></div>' +
-    '</div>' +
+      (!isAdmin() && S.monthDone ? (() => { const c = S.monthDone.filter((x) => x.trainer_id === S.me.id).length; const f = freelancePay(c, payRate(S.me)); return '<div class="card kpi"><div class="muted small">내 수업료 실지급액</div><div class="kpi-v">' + won(f.net) + '</div><div class="muted small">' + c + '회 × ' + won(payRate(S.me)) + ' − 3.3%</div></div>'; })() : '') +
+    '</div>' + payView() +
     '<div class="grid2">' +
       '<section class="card"><h3 class="h3">' + (isAdmin() ? '강사별 매출' : '내 매출') + '</h3>' + by.map((b) => '<div class="stack4 mb12"><div class="row-between"><span>' + esc(b.p.name) + '</span><b class="num">' + won(b.amt) + '</b></div><div class="bar"><div style="width:' + Math.round(b.amt / max * 100) + '%;background:' + esc(b.p.color) + '"></div></div></div>').join('') + (isAdmin() ? '' : '<p class="muted small">다른 강사의 매출은 볼 수 없어요.</p>') + '</section>' +
       '<section class="card"><h3 class="h3">결제 내역</h3><div class="hscroll"><table class="tbl"><thead><tr><th>날짜</th><th>회원</th><th>상품</th><th>강사</th><th>수단</th><th class="r">금액</th>' + (isAdmin() ? '<th></th>' : '') + '</tr></thead><tbody>' +
@@ -619,6 +646,7 @@ function staffView() {
     '<div class="grow"><label class="sr" for="sn-' + p.id + '">이름</label><input id="sn-' + p.id + '" name="name" value="' + esc(p.name) + '"><div class="muted small">' + esc(p.email || '') + '</div></div>' +
     '<label class="sr" for="sr-' + p.id + '">권한</label><select id="sr-' + p.id + '" name="role"' + (p.id === S.me.id ? ' disabled' : '') + '>' +
       [['pending', '승인 대기'], ['trainer', '강사'], ['admin', '관리자']].map(([v, l]) => '<option value="' + v + '"' + (p.role === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
+    '<label class="small" for="sp-' + p.id + '">회당</label><input id="sp-' + p.id + '" name="session_pay" type="number" min="0" step="1000" value="' + payRate(p) + '" style="width:110px">' +
     '<label class="sr" for="sc-' + p.id + '">색</label><select id="sc-' + p.id + '" name="color">' + COLORS.map((c, i) => '<option value="' + c + '"' + (p.color === c ? ' selected' : '') + '>색 ' + (i + 1) + '</option>').join('') + '</select>' +
     '<button class="btn btn-sm btn-primary" type="submit">저장</button>' + (p.role === 'pending' ? '<span class="pill pill-warn">승인 필요</span>' : '') + '</form>').join('');
   return '<div class="stack16"><div class="card"><h2 class="h3">직원 ' + S.profiles.length + '명</h2><p class="muted small">새 직원은 로그인 화면의 <b>가입 신청</b>으로 계정을 만들고, 여기서 <b>강사</b>로 바꿔 주면 쓸 수 있어요. 관리자는 전체 매출을, 강사는 본인 매출만 봐요.</p>' + rows + '</div></div>';
@@ -812,6 +840,13 @@ async function loadJournals() {
   S.journals = journals;
 }
 
+async function loadMonthDone() {
+  const m = S.salesMonth;
+  const from = new Date(m + '-01T00:00:00').toISOString();
+  const to = new Date(addMonths(m + '-01', 1) + 'T00:00:00').toISOString();
+  S.monthDone = await api.select('sessions', { select: 'id,trainer_id,starts_at', filters: [['status', 'eq', 'done'], ['starts_at', 'gte', from], ['starts_at', 'lt', to]] });
+}
+
 async function refreshAfterSessionChange() {
   await Promise.all([loadSessions(true), loadToday(), loadUsage()]);
   if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId);
@@ -830,6 +865,7 @@ async function goScreen(screen) {
   S.modal = null;
   render();
   if (screen === 'journal') { S.journals = null; render(); await loadJournals(); }
+  if (screen === 'sales') { S.monthDone = null; render(); await loadMonthDone(); }
   if (screen === 'schedule') await loadSessions();
   if (screen === 'members' && S.memberId) await loadMemberDetail(S.memberId);
   render();
@@ -860,7 +896,7 @@ const actions = {
   demoReset: () => { api.reset(); toast('체험 데이터를 처음 상태로 돌렸어요.'); },
   logout: () => run(async () => { await api.signOut(); location.reload(); }),
   reloadMe: () => run(async () => { await enterApp(); if (S.me && S.me.role === 'pending') toast('아직 승인 전이에요.'); }),
-  refresh: () => run(async () => { await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
+  refresh: () => run(async () => { await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
   go: (d) => goScreen(d.v),
 
   // 달력
@@ -956,7 +992,7 @@ const actions = {
   },
 
   // 매출
-  salesMove: (d) => { S.salesMonth = addMonths(S.salesMonth + '-01', Number(d.v)).slice(0, 7); render(); },
+  salesMove: (d) => run(async () => { S.salesMonth = addMonths(S.salesMonth + '-01', Number(d.v)).slice(0, 7); S.monthDone = null; render(); await loadMonthDone(); }),
   newPayment: () => { S.modal = { type: 'payment' }; render(); },
   editPayment: (d) => { S.modal = { type: 'payment', payment: S.payments.find((p) => p.id === d.id) }; render(); },
   deletePayment: (d) => confirmBox('결제 삭제', '이 결제 기록을 지울까요? 되돌릴 수 없어요.', '삭제', async () => { await api.remove('payments', d.id); await loadCore(); }),
@@ -1054,6 +1090,7 @@ const submits = {
     else await api.insert('payments', [row]);
     S.modal = null;
     S.salesMonth = v.paid_on.slice(0, 7);
+    await loadMonthDone();
     await loadCore();
   }, '결제를 저장했어요.'),
 
@@ -1074,7 +1111,7 @@ const submits = {
 
   saveStaff: (v, form) => run(async () => {
     const id = form.dataset.id;
-    const patch = { name: v.name.trim(), color: v.color };
+    const patch = { name: v.name.trim(), color: v.color, session_pay: Number(v.session_pay) || 30000 };
     if (v.role) patch.role = v.role;
     await api.update('profiles', id, patch);
     await loadCore();

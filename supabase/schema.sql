@@ -265,3 +265,9 @@ with (security_invoker = true) as
    where status = 'done' and pass_id is not null
    group by pass_id;
 grant select on public.pass_usage to authenticated;
+
+-- =============================================================
+-- 강사 회당 수업료 (프리랜서 3.3% 계산용, 기본 30,000원)
+-- 관리자만 바꿀 수 있음 (profiles 수정 권한이 관리자에게만 있음)
+-- =============================================================
+alter table public.profiles add column if not exists session_pay int not null default 30000;
