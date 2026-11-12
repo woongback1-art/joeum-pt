@@ -369,3 +369,34 @@ create policy blocks_insert on public.blocks for insert to authenticated with ch
 create policy blocks_update on public.blocks for update to authenticated using (public.is_admin() or (public.is_staff() and owner_id = auth.uid())) with check (public.is_admin() or (public.is_staff() and owner_id = auth.uid()));
 create policy blocks_delete on public.blocks for delete to authenticated using (public.is_admin() or (public.is_staff() and owner_id = auth.uid()));
 grant select, insert, update, delete on public.blocks to authenticated;
+
+-- =============================================================
+-- 수업일지: 오늘의 컨디션 · 운동 강도
+-- =============================================================
+alter table public.journals add column if not exists condition text;
+alter table public.journals add column if not exists intensity text;
+
+create or replace function public.get_shared_journal(p_token text)
+returns json
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select json_build_object(
+    'member', m.name,
+    'trainer', p.name,
+    'starts_at', s.starts_at,
+    'items', j.items,
+    'condition', j.condition,
+    'intensity', j.intensity,
+    'updated_at', j.updated_at
+  )
+  from public.journals j
+  join public.members m on m.id = j.member_id
+  left join public.sessions s on s.id = j.session_id
+  left join public.profiles p on p.id = j.trainer_id
+  where p_token is not null and length(p_token) >= 20 and j.share_token = p_token
+  limit 1;
+$$;
+grant execute on function public.get_shared_journal(text) to anon, authenticated;

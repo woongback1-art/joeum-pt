@@ -205,7 +205,7 @@ function sharedView() {
         (doseText(it) ? '<div class="share-sets">' + esc(doseText(it)) + '</div>' : '') +
         (it.check ? '<p class="pre share-check">' + esc(it.check) + '</p>' : '') + v + '</section>';
     }).join('');
-    body = '<header class="share-head"><div class="brand-lg">' + esc(CENTER_NAME) + '</div><h1 class="h1">' + esc(d.member) + ' 회원님 수업일지</h1><div class="muted">' + when + (d.trainer ? ' · 담당 ' + esc(d.trainer) + ' 강사' : '') + '</div></header>' + items +
+    body = '<header class="share-head"><div class="brand-lg">' + esc(CENTER_NAME) + '</div><h1 class="h1">' + esc(d.member) + ' 회원님 수업일지</h1><div class="muted">' + when + (d.trainer ? ' · 담당 ' + esc(d.trainer) + ' 강사' : '') + '</div>' + journalMetaView(d) + '</header>' + items +
       '<p class="muted small center">' + esc(CENTER_NAME) + '에서 보낸 수업 기록이에요.</p>';
   }
   return '<div class="share-page">' + body + '</div>';
@@ -234,13 +234,14 @@ function shareUrl(token) {
   return location.origin + location.pathname + '?j=' + encodeURIComponent(token);
 }
 
-function shareText(memberName, startsAt, items, url) {
+function shareText(memberName, startsAt, items, url, cond, inten) {
   const when = startsAt ? md(localDate(startsAt)) + '(' + DOW[dowOf(localDate(startsAt))] + ')' : '';
   const lines = (items || []).map((it, i) => {
     const st = doseText(it);
     return (i + 1) + '. ' + it.exercise + (st ? ' ' + st : '');
   });
-  return '[' + CENTER_NAME + ' 수업일지] ' + when + ' ' + memberName + ' 회원님\n' + lines.join('\n') + '\n\n자세히 보기 (영상·체크사항): ' + url;
+  const meta = [cond ? '컨디션: ' + cond : '', inten ? '강도: ' + inten : ''].filter(Boolean).join(' · ');
+  return '[' + CENTER_NAME + ' 수업일지] ' + when + ' ' + memberName + ' 회원님\n' + (meta ? meta + '\n' : '') + lines.join('\n') + '\n\n자세히 보기 (영상·체크사항): ' + url;
 }
 
 // ---------- 로그인 ----------
@@ -570,10 +571,10 @@ function sidePanel() {
     }
     let jhtml = '';
     if (s.status === 'done') {
-      jhtml = (j ? journalItemsView(j.items) + '<button type="button" class="btn btn-primary" data-act="shareJournal" data-id="' + j.id + '">회원에게 보내기</button>' : '<p class="muted small">아직 일지가 없어요.</p>') +
+      jhtml = (j ? journalMetaView(j) + journalItemsView(j.items) + '<button type="button" class="btn btn-primary" data-act="shareJournal" data-id="' + j.id + '">회원에게 보내기</button>' : '<p class="muted small">아직 일지가 없어요.</p>') +
         '<button type="button" class="btn ' + (j ? 'btn-outline' : 'btn-primary') + '" data-act="writeJournal" data-id="' + s.id + '" data-d="' + d + '">' + (j ? '일지 수정' : '일지 쓰기') + '</button>';
     } else if (s.status === 'reserved') {
-      jhtml = (j ? '<div class="small b">미리 써 둔 수업일지</div>' + journalItemsView(j.items) : '') +
+      jhtml = (j ? '<div class="small b">미리 써 둔 수업일지</div>' + journalMetaView(j) + journalItemsView(j.items) : '') +
         '<button type="button" class="btn btn-outline" data-act="writeJournal" data-id="' + s.id + '" data-d="' + d + '">' + (j ? '미리 쓴 일지 수정' : '수업일지 미리 쓰기') + '</button>';
     }
     const canDelete = isAdmin() || s.trainer_id === S.me.id;
@@ -625,6 +626,8 @@ function composerView() {
   return '<section class="card stack composer" aria-label="수업일지 작성">' +
     '<div class="row-between"><div><h2 class="h3">' + (s && s.status === 'reserved' ? '수업일지 미리 쓰기 · ' : '수업일지 · ') + esc(m ? m.name : '') + '</h2><div class="muted small">' + (s ? longDay(localDate(s.starts_at)) + ' ' + localTime(s.starts_at) + ' · ' + esc(staffName(s.trainer_id)) : '') + '</div>' + (m && m.goal ? '<div class="muted small">목표: ' + esc(m.goal) + '</div>' : '') + '</div><button type="button" class="btn btn-sm" data-act="closeComposer">닫기</button></div>' +
     '<datalist id="exercise-list">' + ['스쿼트', '데드리프트', '벤치프레스', '랫풀다운', '시티드 로우', '런지', '힙브릿지', '플랭크', '레그프레스', '숄더프레스'].map((x) => '<option value="' + x + '"></option>').join('') + '</datalist>' +
+    choiceRow('오늘의 컨디션', 'setCondition', CONDITIONS, c.condition) +
+    choiceRow('운동 강도', 'setIntensity', INTENSITIES, c.intensity) +
     '<button type="button" class="btn btn-sm left" data-act="loadLastJournal">지난 일지 불러오기</button>' +
     rows +
     '<button type="button" class="btn btn-outline" data-act="addRow">+ 운동 추가</button>' +
@@ -649,6 +652,17 @@ function doseText(it) {
 function setsText(it) {
   const t = doseText(it);
   return t ? ' <span class="pill pill-blue">' + t + '</span>' : '';
+}
+
+const CONDITIONS = ['아주 좋음', '좋음', '보통', '피곤함', '안 좋음'];
+const INTENSITIES = ['가볍게', '보통', '힘들게', '매우 힘들게'];
+function journalMetaView(j) {
+  if (!j || (!j.condition && !j.intensity)) return '';
+  return '<div class="row gap6 wrap mt8">' + (j.condition ? '<span class="pill pill-ok">컨디션 · ' + esc(j.condition) + '</span>' : '') + (j.intensity ? '<span class="pill pill-warn">강도 · ' + esc(j.intensity) + '</span>' : '') + '</div>';
+}
+function choiceRow(label, act, options, current) {
+  return '<div class="stack4"><span class="lbl">' + label + '</span><div class="row gap6 wrap" role="group" aria-label="' + label + '">' +
+    options.map((o) => '<button type="button" class="chip' + (current === o ? ' on dark' : '') + '" data-act="' + act + '" data-v="' + esc(o) + '" aria-pressed="' + (current === o) + '">' + esc(o) + '</button>').join('') + '</div></div>';
 }
 
 function journalItemsView(items) {
@@ -705,7 +719,7 @@ function memberDetailView() {
       '<div class="row gap8 wrap"><button type="button" class="btn btn-sm" data-act="editMember" data-id="' + m.id + '">정보 수정</button><button type="button" class="btn btn-sm" data-act="newSessionFor" data-id="' + m.id + '">예약 추가</button><button type="button" class="btn btn-primary btn-sm" data-act="newPass" data-id="' + m.id + '">수강권 등록</button>' + (isAdmin() ? '<button type="button" class="btn btn-sm danger-text" data-act="deleteMember" data-id="' + m.id + '">회원 삭제</button>' : '') + '</div></div>' +
     '<div class="passes">' + passCards + '</div>' +
     '<div class="grid2">' +
-      '<section class="card"><h3 class="h3">수업일지</h3>' + (journals == null ? '<p class="muted small">불러오는 중…</p>' : journals.length ? journals.map((j) => '<div class="j-block"><div class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' ' + (j.session_at ? localTime(j.session_at) : '') + ' · ' + esc(staffName(j.trainer_id)) + '</div>' + journalItemsView(j.items) + journalTools(j) + '</div>').join('') : '<p class="muted small">아직 일지가 없어요.</p>') + '</section>' +
+      '<section class="card"><h3 class="h3">수업일지</h3>' + (journals == null ? '<p class="muted small">불러오는 중…</p>' : journals.length ? journals.map((j) => '<div class="j-block"><div class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' ' + (j.session_at ? localTime(j.session_at) : '') + ' · ' + esc(staffName(j.trainer_id)) + '</div>' + journalMetaView(j) + journalItemsView(j.items) + journalTools(j) + '</div>').join('') : '<p class="muted small">아직 일지가 없어요.</p>') + '</section>' +
       '<div class="stack16">' +
         '<section class="card"><h3 class="h3">다가오는 예약</h3>' + (det == null ? '<p class="muted small">불러오는 중…</p>' : upcoming.length ? upcoming.map((x) => { const pre = det.journals.some((j) => j.session_id === x.id); return '<div class="list-row"><button type="button" class="link grow" style="color:inherit;font-weight:500" data-act="gotoSession" data-id="' + x.id + '" data-d="' + localDate(x.starts_at) + '">' + longDay(localDate(x.starts_at)) + ' ' + localTime(x.starts_at) + ' <span class="muted small">' + esc(staffName(x.trainer_id)) + '</span></button><button type="button" class="btn btn-sm' + (pre ? '' : ' btn-outline') + '" data-act="writeJournal" data-id="' + x.id + '" data-d="' + localDate(x.starts_at) + '">' + (pre ? '미리 쓴 일지 수정' : '일지 미리 쓰기') + '</button></div>'; }).join('') : '<p class="muted small">예약 없음</p>') + '</section>' +
         '<section class="card"><h3 class="h3">결제 내역</h3>' + (pays.length ? pays.map((p) => '<div class="list-row"><span class="grow">' + esc(p.item) + '<br><span class="muted small">' + p.paid_on + ' · ' + esc(p.method) + ' · ' + esc(staffName(p.trainer_id)) + '</span></span><b class="num">' + won(p.amount) + '</b></div>').join('') : '<p class="muted small">' + (canSeeAllPay ? '결제 내역이 없어요.' : '본인 매출로 잡힌 결제만 볼 수 있어요.') + '</p>') + '</section>' +
@@ -719,7 +733,7 @@ function journalListView() {
   const list = (S.journals || []).filter((j) => S.jFilter === 'all' || j.trainer_id === S.jFilter);
   const body = S.journals == null ? '<p class="muted">불러오는 중…</p>' : list.length ? '<div class="cards">' + list.map((j) => {
     const m = memberById(j.member_id);
-    return '<article class="card"><div class="row-between"><button type="button" class="link big" data-act="openMember" data-id="' + j.member_id + '">' + esc(m ? m.name : '?') + '</button><span class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' · ' + esc(staffName(j.trainer_id)) + '</span></div>' + journalItemsView(j.items) + journalTools(j) + '</article>';
+    return '<article class="card"><div class="row-between"><button type="button" class="link big" data-act="openMember" data-id="' + j.member_id + '">' + esc(m ? m.name : '?') + '</button><span class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' · ' + esc(staffName(j.trainer_id)) + '</span></div>' + journalMetaView(j) + journalItemsView(j.items) + journalTools(j) + '</article>';
   }).join('') + '</div>' : '<p class="muted">작성된 일지가 없어요. 예약·출석에서 출석 처리하면 일지를 쓸 수 있어요.</p>';
   return '<div class="stack16"><div class="row gap6 wrap">' + chips + '<span class="muted small ml8">최근 100개</span></div>' + body + '</div>';
 }
@@ -982,7 +996,7 @@ async function loadSessions(force) {
   const key = from + '|' + to;
   if (!force && key === S.sessionsRange) return;
   const rows = await api.select('sessions', {
-    select: '*,journals(id,items,trainer_id,updated_at,share_token)',
+    select: '*,journals(id,items,trainer_id,updated_at,share_token,condition,intensity)',
     filters: [['starts_at', 'gte', new Date(from + 'T00:00:00').toISOString()], ['starts_at', 'lt', new Date(to + 'T00:00:00').toISOString()]],
     order: 'starts_at.asc',
   });
@@ -1002,7 +1016,7 @@ async function loadToday() {
   await loadUnchecked();
   const t = todayStr();
   S.todaySessions = await api.select('sessions', {
-    select: '*,journals(id,items,trainer_id,updated_at,share_token)',
+    select: '*,journals(id,items,trainer_id,updated_at,share_token,condition,intensity)',
     filters: [['starts_at', 'gte', new Date(t + 'T00:00:00').toISOString()], ['starts_at', 'lt', new Date(addDays(t, 1) + 'T00:00:00').toISOString()]],
     order: 'starts_at.asc',
   });
@@ -1138,7 +1152,7 @@ const actions = {
     await refreshAfterSessionChange();
     if (S.screen === 'sales') await loadMonthDone();
     const s = S.sessions.find((x) => x.id === d.id) || S.todaySessions.find((x) => x.id === d.id);
-    if (d.v === 'done' && s && !journalOf(s) && S.screen === 'schedule') S.composer = { sessionId: s.id, journalId: null, rows: [emptyRow()] };
+    if (d.v === 'done' && s && !journalOf(s) && S.screen === 'schedule') S.composer = { sessionId: s.id, journalId: null, condition: '', intensity: '', rows: [emptyRow()] };
     toast({ done: '출석 처리 · 수강권 1회 차감', noshow: '노쇼 처리 (차감 안 함)', canceled: '예약을 취소했어요', reserved: '예약 상태로 되돌렸어요' }[d.v]);
   }),
 
@@ -1152,9 +1166,11 @@ const actions = {
     s = S.sessions.find((x) => x.id === d.id) || s;
     const j = s ? journalOf(s) : null;
     S.selSessionId = d.id;
-    S.composer = { sessionId: d.id, journalId: j ? j.id : null, rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
+    S.composer = { sessionId: d.id, journalId: j ? j.id : null, condition: (j && j.condition) || '', intensity: (j && j.intensity) || '', rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
   }),
   closeComposer: () => { S.composer = null; render(); },
+  setCondition: (d) => { syncComposer(); S.composer.condition = S.composer.condition === d.v ? '' : d.v; render(); },
+  setIntensity: (d) => { syncComposer(); S.composer.intensity = S.composer.intensity === d.v ? '' : d.v; render(); },
   newBlock: () => { S.modal = { type: 'block' }; render(); },
   blockOwner: (d) => { S.blockOwner = d.v; render(); },
   blockSlot: (d) => { const h = Number(d.t.slice(0, 2)); S.modal = { type: 'block', preset: { days: [Number(d.w)], start: d.t, end: pad(Math.min(CAL_END, h + 1)) + ':00' } }; render(); },
@@ -1170,7 +1186,7 @@ const actions = {
     if (j.session_id) { const ss = await api.select('sessions', { select: 'id,starts_at', filters: [['id', 'eq', j.session_id]] }); startsAt = ss[0] ? ss[0].starts_at : null; }
     const m = memberById(j.member_id);
     const url = shareUrl(j.share_token);
-    S.modal = { type: 'share', journalId: j.id, memberName: m ? m.name : '', url, text: shareText(m ? m.name : '', startsAt, j.items, url) };
+    S.modal = { type: 'share', journalId: j.id, memberName: m ? m.name : '', url, text: shareText(m ? m.name : '', startsAt, j.items, url, j.condition, j.intensity) };
     await Promise.all([loadSessions(true), loadToday()]);
     if (S.screen === 'journal') await loadJournals();
   }),
@@ -1192,11 +1208,11 @@ const actions = {
     if (S.screen === 'journal') await loadJournals();
   }, '링크를 껐어요. 보낸 링크로는 더 이상 볼 수 없어요.'),
   editJournalHere: (d) => run(async () => {
-    const rows = await api.select('sessions', { select: '*,journals(id,items,trainer_id,updated_at,share_token)', filters: [['id', 'eq', d.id]] });
+    const rows = await api.select('sessions', { select: '*,journals(id,items,trainer_id,updated_at,share_token,condition,intensity)', filters: [['id', 'eq', d.id]] });
     const s = rows[0];
     if (!s) throw new Error('연결된 일정을 찾을 수 없어요.');
     const j = journalOf(s);
-    S.composer = { sessionId: s.id, session: s, journalId: j ? j.id : null, rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
+    S.composer = { sessionId: s.id, session: s, journalId: j ? j.id : null, condition: (j && j.condition) || '', intensity: (j && j.intensity) || '', rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
   }),
   deleteJournal: (d) => confirmBox('수업일지 삭제', '이 수업일지를 지울까요? 수업(출석 기록)은 그대로 남아요. 되돌릴 수 없어요.', '삭제', async () => {
     await api.remove('journals', d.id);
@@ -1247,8 +1263,9 @@ const actions = {
         }
         items.push({ exercise: r.exercise.trim(), sets: Number(r.sets) || null, reps: Number(r.reps) || null, min: Number(r.min) || null, sec: Number(r.sec) || null, check: (r.check || '').trim(), video });
       }
-      if (c.journalId) await api.update('journals', c.journalId, { items, updated_at: new Date().toISOString() });
-      else await api.insert('journals', [{ session_id: s.id, member_id: s.member_id, trainer_id: s.trainer_id || S.me.id, items }]);
+      const meta = { condition: c.condition || null, intensity: c.intensity || null };
+      if (c.journalId) await api.update('journals', c.journalId, Object.assign({ items, updated_at: new Date().toISOString() }, meta));
+      else await api.insert('journals', [Object.assign({ session_id: s.id, member_id: s.member_id, trainer_id: s.trainer_id || S.me.id, items }, meta)]);
       S.composer = null;
       await Promise.all([loadSessions(true), loadToday()]);
       if (S.memberDetail && S.memberDetail.memberId === s.member_id) await loadMemberDetail(s.member_id);

@@ -440,7 +440,7 @@ export class MockApi {
       const m = this.db.members.find((x) => x.id === j.member_id);
       const s = this.db.sessions.find((x) => x.id === j.session_id);
       const p = this.db.profiles.find((x) => x.id === j.trainer_id);
-      return { member: m ? m.name : '', trainer: p ? p.name : '', starts_at: s ? s.starts_at : null, items: j.items, updated_at: j.updated_at };
+      return { member: m ? m.name : '', trainer: p ? p.name : '', starts_at: s ? s.starts_at : null, items: j.items, condition: j.condition || null, intensity: j.intensity || null, updated_at: j.updated_at };
     }
     if (fn === 'update_my_profile') {
       const me = this._me();
