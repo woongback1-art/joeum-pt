@@ -400,3 +400,8 @@ as $$
   limit 1;
 $$;
 grant execute on function public.get_shared_journal(text) to anon, authenticated;
+
+-- =============================================================
+-- 강사별 3.3% 공제 적용 여부 (기본 적용)
+-- =============================================================
+alter table public.profiles add column if not exists tax33 boolean not null default true;
