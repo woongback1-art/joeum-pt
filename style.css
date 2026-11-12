@@ -187,3 +187,4 @@ button.list-row:hover { background: #FAFAF7; }
 .blk b { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .blk span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .day-check { display: inline-flex; align-items: center; gap: 4px; min-height: 38px; padding: 0 10px; border: 1px solid #C9C6BB; border-radius: 8px; font-weight: 500; }
 .day-check input { width: 16px; min-height: 16px; }
+.tt-day { height: 44px; display: flex; align-items: center; justify-content: center; font-weight: 700; border-left: 1px solid var(--line2); }

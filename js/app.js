@@ -60,6 +60,7 @@ const S = {
   payments: [],
   posts: [],
   blocks: [], // 강사 개인 고정 스케줄 (매주 반복)
+  blockOwner: null,
   tasks: [],
   sessions: [],
   sessionsRange: '',
@@ -516,16 +517,37 @@ function daysLabel(days) {
 }
 
 function blocksView() {
-  const owners = isAdmin() ? trainers() : trainers().filter((p) => p.id === S.me.id);
-  const groups = owners.map((p) => {
-    const list = S.blocks.filter((b) => b.owner_id === p.id).sort((a, b) => (DAY_ORDER.indexOf((a.days || [])[0]) - DAY_ORDER.indexOf((b.days || [])[0])) || (a.start_time < b.start_time ? -1 : 1));
-    return '<section class="card"><div class="row gap8 mb8"><span class="dot lg" style="background:' + esc(p.color) + '"></span><h2 class="h3" style="margin:0">' + esc(p.name) + (p.id === S.me.id ? ' (나)' : '') + '</h2></div>' +
-      (list.length ? list.map((b) => '<div class="list-row"><span class="grow"><b>' + esc(b.title) + '</b><br><span class="muted small">' + daysLabel(b.days) + ' · ' + hm(b.start_time) + '–' + hm(b.end_time) + '</span></span>' +
-        ((isAdmin() || b.owner_id === S.me.id) ? '<button type="button" class="btn btn-sm" data-act="editBlock" data-id="' + b.id + '">수정</button><button type="button" class="btn btn-sm danger-text" data-act="deleteBlock" data-id="' + b.id + '">삭제</button>' : '') + '</div>').join('')
-        : '<p class="muted small">등록된 고정 스케줄이 없어요.</p>') + '</section>';
-  }).join('');
-  return '<div class="stack16"><div class="card row-between wrap gap8"><p class="muted small" style="margin:0">병원 근무, 점심, 개인 운동처럼 <b>매주 반복되는 내 일정</b>을 넣어 두면 예약·출석 달력에 회색 칸으로 보여요. 그 시간에 예약을 잡으면 겹친다고 알려 줘요.</p><button type="button" class="btn btn-primary" data-act="newBlock">+ 고정 스케줄 추가</button></div>' +
-    '<div class="grid2">' + groups + '</div></div>';
+  const people = trainers();
+  if (!S.blockOwner || !people.some((p) => p.id === S.blockOwner)) S.blockOwner = S.me.id;
+  const owner = profileById(S.blockOwner) || S.me;
+  const canEdit = isAdmin() || owner.id === S.me.id;
+  const color = owner.color || '#23634A';
+  const names = people.map((p) => '<button type="button" class="chip' + (p.id === owner.id ? ' on dark' : '') + '" data-act="blockOwner" data-v="' + p.id + '" aria-pressed="' + (p.id === owner.id) + '"><span class="dot" style="background:' + esc(p.color) + '"></span>' + esc(p.name) + (p.id === S.me.id ? ' (나)' : '') + '</button>').join('');
+  const mine = S.blocks.filter((b) => b.owner_id === owner.id);
+  let head = '<div class="wk-head"><div></div>';
+  let cols = '';
+  for (const w of DAY_ORDER) {
+    head += '<div class="tt-day" style="color:' + (w === 0 ? '#B42318' : w === 6 ? '#1F4E80' : '#1D2120') + '">' + DOW[w] + '</div>';
+    let inner = '';
+    if (canEdit) for (let h = CAL_START; h < CAL_END; h++) inner += '<button type="button" class="slot" style="top:' + ((h - CAL_START) * HOUR_PX) + 'px" data-act="blockSlot" data-w="' + w + '" data-t="' + pad(h) + ':00" aria-label="' + DOW[w] + '요일 ' + h + '시 고정 스케줄 추가"></button>';
+    for (const b of mine.filter((x) => (x.days || []).includes(w))) {
+      const top = (timeMin(b.start_time) - CAL_START * 60) / 60 * HOUR_PX + 1;
+      const hgt = Math.max(22, (timeMin(b.end_time) - timeMin(b.start_time)) / 60 * HOUR_PX - 2);
+      const style = 'top:' + top + 'px;height:' + hgt + 'px;background:' + tint(color, 0.2) + ';border:1px solid ' + tint(color, 0.45) + ';color:#1D2120';
+      const label = '<b>' + esc(b.title) + '</b><span>' + hm(b.start_time) + '–' + hm(b.end_time) + '</span>';
+      inner += canEdit ? '<button type="button" class="ev" style="' + style + '" data-act="editBlock" data-id="' + b.id + '" aria-label="' + esc(DOW[w] + ' ' + b.title + ' ' + hm(b.start_time) + '–' + hm(b.end_time) + ' 수정') + '">' + label + '</button>' : '<div class="ev" style="' + style + '">' + label + '</div>';
+    }
+    cols += '<div class="wk-col" style="height:' + ((CAL_END - CAL_START) * HOUR_PX) + 'px">' + inner + '</div>';
+  }
+  head += '</div>';
+  let hours = '<div class="wk-hours">';
+  for (let h = CAL_START; h < CAL_END; h++) hours += '<div class="hour">' + pad(h) + ':00</div>';
+  hours += '</div>';
+  return '<div class="stack16">' +
+    '<div class="row gap6 wrap">' + names + '</div>' +
+    '<div class="row-between wrap gap8"><p class="muted small" style="margin:0">' + (canEdit ? '빈 칸을 누르면 그 요일·시간에 고정 스케줄이 들어가요. 들어간 칸을 누르면 시간·요일을 고치거나 지울 수 있어요. 예약·출석 달력에는 회색 빗금으로 보여요.' : esc(owner.name) + ' 강사님의 고정 스케줄이에요. 보기만 할 수 있어요.') + '</p>' +
+      (canEdit ? '<button type="button" class="btn btn-primary" data-act="newBlock">+ 여러 요일 한 번에 추가</button>' : '') + '</div>' +
+    '<section class="card cal" aria-label="' + esc(owner.name) + ' 고정 스케줄 시간표"><div class="hscroll"><div class="wk">' + head + '<div class="wk-body" data-scroll-key="tt">' + hours + cols + '</div></div></div></section></div>';
 }
 
 function sidePanel() {
@@ -875,15 +897,17 @@ function modalView() {
     const b = md_.block;
     title = b ? '고정 스케줄 수정' : '고정 스케줄 추가';
     submit = 'saveBlock';
-    const days = b ? b.days : [1, 2, 3, 4, 5];
+    const pre = md_.preset || {};
+    const days = b ? b.days : pre.days || [1, 2, 3, 4, 5];
     const times = timeOptions().concat([pad(CAL_END) + ':00']);
-    const st = b ? hm(b.start_time) : '09:00', en = b ? hm(b.end_time) : '18:00';
+    const st = b ? hm(b.start_time) : pre.start || '09:00', en = b ? hm(b.end_time) : pre.end || '18:00';
     if (!times.includes(st)) times.push(st); if (!times.includes(en)) times.push(en); times.sort();
-    body = (isAdmin() ? field('bl-owner', '누구 일정', '<select id="bl-owner" name="owner_id">' + trainerOptions(b ? b.owner_id : S.me.id) + '</select>') : '') +
+    body = (isAdmin() ? field('bl-owner', '누구 일정', '<select id="bl-owner" name="owner_id">' + trainerOptions(b ? b.owner_id : S.blockOwner || S.me.id) + '</select>') : '') +
       field('bl-title', '내용', '<input id="bl-title" name="title" required value="' + esc(b ? b.title : '') + '" placeholder="예: 병원 근무, 점심, 개인 운동">') +
       '<fieldset class="fs"><legend>요일</legend><div class="row gap6 wrap">' + DAY_ORDER.map((w) => '<label class="day-check"><input type="checkbox" name="day" value="' + w + '"' + (days.includes(w) ? ' checked' : '') + '><span>' + DOW[w] + '</span></label>').join('') + '</div>' +
       '<div class="row gap6 wrap"><button type="button" class="chip" data-act="blockDays" data-v="1,2,3,4,5">평일</button><button type="button" class="chip" data-act="blockDays" data-v="6,0">주말</button><button type="button" class="chip" data-act="blockDays" data-v="1,2,3,4,5,6,0">매일</button></div></fieldset>' +
       '<div class="row gap8"><div class="grow stack4">' + field('bl-start', '시작', '<select id="bl-start" name="start_time">' + times.map((t) => '<option' + (t === st ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + '</div><div class="grow stack4">' + field('bl-end', '끝', '<select id="bl-end" name="end_time">' + times.map((t) => '<option' + (t === en ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + '</div></div>';
+    if (b) body += '<button type="button" class="link small left danger-text" data-act="deleteBlock" data-id="' + b.id + '">이 고정 스케줄 삭제</button>';
   } else if (md_.type === 'share') {
     title = '회원에게 일지 보내기';
     body = '<p class="small">' + esc(md_.memberName) + ' 회원님 전용 링크예요. 로그인 없이 운동 내용과 영상을 볼 수 있어요.</p>' +
@@ -1132,6 +1156,8 @@ const actions = {
   }),
   closeComposer: () => { S.composer = null; render(); },
   newBlock: () => { S.modal = { type: 'block' }; render(); },
+  blockOwner: (d) => { S.blockOwner = d.v; render(); },
+  blockSlot: (d) => { const h = Number(d.t.slice(0, 2)); S.modal = { type: 'block', preset: { days: [Number(d.w)], start: d.t, end: pad(Math.min(CAL_END, h + 1)) + ':00' } }; render(); },
   editBlock: (d) => { S.modal = { type: 'block', block: S.blocks.find((b) => b.id === d.id) }; render(); },
   deleteBlock: (d) => { const b = S.blocks.find((x) => x.id === d.id); confirmBox('고정 스케줄 삭제', b.title + ' (' + daysLabel(b.days) + ' ' + hm(b.start_time) + '–' + hm(b.end_time) + ') 을 지울까요?', '삭제', async () => { await api.remove('blocks', d.id); await loadCore(); }); },
   blockDays: (d) => { const on = d.v.split(','); document.querySelectorAll('input[name=day]').forEach((el) => { el.checked = on.includes(el.value); }); },
