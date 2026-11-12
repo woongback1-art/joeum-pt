@@ -78,6 +78,10 @@ const S = {
   memberDetail: null, // { journals, sessions }
   journals: null,
   jFilter: 'all',
+  jSearch: '',
+  jMember: null,
+  jDate: null,
+  jDetail: null,
   salesMonth: todayStr().slice(0, 7),
   monthDone: null, // 이번 달 출석 처리된 수업 (수업료 계산용)
   openPost: null,
@@ -728,14 +732,58 @@ function memberDetailView() {
 
 // ---------- 수업일지 목록 ----------
 function journalListView() {
+  if (S.journals == null) return '<p class="muted">불러오는 중…</p>';
+  // 회원별 일지 수·최근 날짜
+  const stat = {};
+  for (const j of S.journals) {
+    const k = j.member_id;
+    const d = j.session_at || j.created_at;
+    if (!stat[k]) stat[k] = { n: 0, last: d };
+    stat[k].n++;
+    if (d > stat[k].last) stat[k].last = d;
+  }
+  const q = (S.jSearch || '').trim();
   const chips = [['all', '전체 강사']].concat(trainers().map((p) => [p.id, p.name])).map(([id, l]) =>
     '<button type="button" class="chip' + (S.jFilter === id ? ' on dark' : '') + '" data-act="jFilter" data-v="' + id + '" aria-pressed="' + (S.jFilter === id) + '">' + esc(l) + '</button>').join('');
-  const list = (S.journals || []).filter((j) => S.jFilter === 'all' || j.trainer_id === S.jFilter);
-  const body = S.journals == null ? '<p class="muted">불러오는 중…</p>' : list.length ? '<div class="cards">' + list.map((j) => {
-    const m = memberById(j.member_id);
-    return '<article class="card"><div class="row-between"><button type="button" class="link big" data-act="openMember" data-id="' + j.member_id + '">' + esc(m ? m.name : '?') + '</button><span class="muted small">' + (j.session_at && j.session_at > new Date().toISOString() ? '<span class="pill pill-warn">미리 작성</span> ' : '') + md(localDate(j.session_at || j.created_at)) + ' · ' + esc(staffName(j.trainer_id)) + '</span></div>' + journalMetaView(j) + journalItemsView(j.items) + journalTools(j) + '</article>';
-  }).join('') + '</div>' : '<p class="muted">작성된 일지가 없어요. 예약·출석에서 출석 처리하면 일지를 쓸 수 있어요.</p>';
-  return '<div class="stack16"><div class="row gap6 wrap">' + chips + '<span class="muted small ml8">최근 100개</span></div>' + body + '</div>';
+  const list = S.members.filter((m) => (S.jFilter === 'all' || m.trainer_id === S.jFilter) && (!q || m.name.includes(q)))
+    .sort((a, b) => { const x = stat[a.id], y = stat[b.id]; if (x && y) return x.last < y.last ? 1 : -1; if (x) return -1; if (y) return 1; return a.name.localeCompare(b.name, 'ko'); });
+  const rows = list.length ? list.map((m) => {
+    const st = stat[m.id];
+    return '<button type="button" class="list-row tall' + (m.id === S.jMember ? ' sel' : '') + '" data-act="jMember" data-id="' + m.id + '"><span class="avatar">' + esc(m.name.slice(0, 1)) + '</span><span class="grow"><b>' + esc(m.name) + '</b><br><span class="muted small">' + esc(staffName(m.trainer_id)) + ' · ' + (st ? '일지 ' + st.n + '개 · 최근 ' + md(localDate(st.last)) : '일지 없음') + '</span></span></button>';
+  }).join('') : '<p class="muted small">해당 회원이 없어요.</p>';
+  return '<div class="split">' +
+    '<section class="card list-pane"><h2 class="h3">회원</h2><label for="j-search" class="small b">검색</label><input id="j-search" type="search" data-model="jSearch" value="' + esc(S.jSearch || '') + '" placeholder="회원 이름">' +
+    '<div class="row gap6 wrap mt8 mb8">' + chips + '</div>' + rows + '</section>' +
+    '<section class="detail-pane">' + journalMemberView() + '</section></div>';
+}
+
+function journalMemberView() {
+  const m = S.jMember ? memberById(S.jMember) : null;
+  if (!m) return '<div class="card muted">왼쪽에서 회원을 누르면 날짜별 수업일지가 나와요.</div>';
+  const det = S.jDetail && S.jDetail.memberId === m.id ? S.jDetail : null;
+  const head = '<div class="card row-between wrap gap8"><div class="row gap16"><span class="avatar lg">' + esc(m.name.slice(0, 1)) + '</span><div><h2 class="h2">' + esc(m.name) + '</h2><div class="muted small">담당 ' + esc(staffName(m.trainer_id)) + (m.goal ? ' · 목표: ' + esc(m.goal) : '') + '</div></div></div>' +
+    '<button type="button" class="btn btn-sm" data-act="openMember" data-id="' + m.id + '">회원 정보</button></div>';
+  if (!det) return '<div class="stack16">' + head + '<div class="card muted">불러오는 중…</div></div>';
+  const js = det.journals;
+  if (!js.length) return '<div class="stack16">' + head + '<div class="card muted">아직 수업일지가 없어요. 예약·출석에서 출석 처리하면 일지를 쓸 수 있어요.</div></div>';
+  const nowIso = new Date().toISOString();
+  const sel = js.find((j) => j.id === S.jDate) || js[0];
+  // 월별로 묶은 날짜 버튼
+  const months = [];
+  for (const j of js) {
+    const d = localDate(j.session_at || j.created_at);
+    const key = d.slice(0, 7);
+    let g = months.find((x) => x.key === key);
+    if (!g) { g = { key, items: [] }; months.push(g); }
+    g.items.push({ j, d });
+  }
+  const dates = months.map((g) => '<div class="stack6"><div class="small b muted">' + g.key.slice(0, 4) + '년 ' + Number(g.key.slice(5)) + '월</div><div class="row gap6 wrap">' +
+    g.items.map(({ j, d }) => { const future = j.session_at && j.session_at > nowIso; return '<button type="button" class="chip' + (j.id === sel.id ? ' on dark' : '') + '" data-act="jDate" data-id="' + j.id + '" aria-pressed="' + (j.id === sel.id) + '">' + md(d) + '(' + DOW[dowOf(d)] + ')' + (future ? ' · 미리' : '') + '</button>'; }).join('') + '</div></div>').join('');
+  const sd = localDate(sel.session_at || sel.created_at);
+  const future = sel.session_at && sel.session_at > nowIso;
+  const card = '<article class="card"><div class="row-between wrap gap8"><h3 class="h2">' + longDay(sd) + (sel.session_at ? ' ' + localTime(sel.session_at) : '') + '</h3><span class="muted small">' + (future ? '<span class="pill pill-warn">미리 작성</span> ' : '') + esc(staffName(sel.trainer_id)) + '</span></div>' +
+    journalMetaView(sel) + journalItemsView(sel.items) + journalTools(sel) + '</article>';
+  return '<div class="stack16">' + head + '<section class="card stack"><div class="row-between"><h3 class="h3" style="margin:0">날짜 선택</h3><span class="muted small">일지 ' + js.length + '개</span></div>' + dates + '</section>' + card + '</div>';
 }
 
 // ---------- 강사 수업료 (프리랜서 3.3%) ----------
@@ -1035,17 +1083,29 @@ async function loadMemberDetail(memberId) {
 }
 
 async function loadJournals() {
-  const journals = await api.select('journals', { order: 'created_at.desc', limit: 100 });
-  const ids = journals.map((j) => j.session_id).filter(Boolean);
+  // 회원별 개수·최근 날짜용 가벼운 목록
+  const idx = await api.select('journals', { select: 'id,member_id,session_id,trainer_id,created_at', order: 'created_at.desc', limit: 5000 });
+  const ids = idx.map((j) => j.session_id).filter(Boolean);
   const at = {};
-  for (let i = 0; i < ids.length; i += 40) {
-    const chunk = ids.slice(i, i + 40);
-    const ss = await api.select('sessions', { select: 'id,starts_at', filters: [['id', 'in', chunk]] });
+  for (let i = 0; i < ids.length; i += 80) {
+    const ss = await api.select('sessions', { select: 'id,starts_at', filters: [['id', 'in', ids.slice(i, i + 80)]] });
     for (const s of ss) at[s.id] = s.starts_at;
   }
+  for (const j of idx) j.session_at = at[j.session_id] || null;
+  S.journals = idx;
+  if (S.jMember) await loadJDetail(S.jMember);
+}
+
+async function loadJDetail(memberId) {
+  const [journals, sessions] = await Promise.all([
+    api.select('journals', { filters: [['member_id', 'eq', memberId]], order: 'created_at.desc', limit: 500 }),
+    api.select('sessions', { select: 'id,starts_at', filters: [['member_id', 'eq', memberId]] }),
+  ]);
+  const at = {};
+  for (const s of sessions) at[s.id] = s.starts_at;
   for (const j of journals) j.session_at = at[j.session_id] || null;
   journals.sort((a, b) => ((b.session_at || b.created_at) > (a.session_at || a.created_at) ? 1 : -1));
-  S.journals = journals;
+  S.jDetail = { memberId, journals };
 }
 
 async function loadMonthDone() {
@@ -1278,6 +1338,8 @@ const actions = {
     api.videoUrl(d.path).then((url) => { if (S.modal && S.modal.type === 'video') { S.modal.url = url; render(); } }).catch((e) => { S.modal = null; toast(e.message); });
   },
   jFilter: (d) => { S.jFilter = d.v; render(); },
+  jMember: (d) => run(async () => { S.jMember = d.id; S.jDate = null; S.jDetail = null; render(); await loadJDetail(d.id); }),
+  jDate: (d) => { S.jDate = d.id; render(); },
 
   // 회원
   memberFilter: (d) => { S.memberFilter = d.v; render(); },
