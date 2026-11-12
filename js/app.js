@@ -465,7 +465,7 @@ function weekView(ws) {
     for (const b of blocksOn(d)) {
       const top = (timeMin(b.start_time) - CAL_START * 60) / 60 * HOUR_PX;
       const h = Math.max(20, (timeMin(b.end_time) - timeMin(b.start_time)) / 60 * HOUR_PX);
-      inner += '<div class="blk" style="top:' + top + 'px;height:' + h + 'px;border-color:' + esc(staffColor(b.owner_id)) + '" title="' + esc(staffName(b.owner_id) + ' · ' + b.title) + '"><b>' + esc(b.title) + '</b><span>' + esc(staffName(b.owner_id)) + ' · ' + hm(b.start_time) + '–' + hm(b.end_time) + '</span></div>';
+      inner += '<button type="button" class="blk" data-act="blockBook" data-id="' + b.id + '" data-d="' + d + '" style="top:' + top + 'px;height:' + h + 'px;border-color:' + esc(staffColor(b.owner_id)) + '" title="눌러서 예약으로 넣기 · ' + esc(staffName(b.owner_id) + ' · ' + b.title) + '" aria-label="' + esc(b.title + ' ' + hm(b.start_time) + ' 고정 스케줄, 눌러서 예약으로 넣기') + '"><b>' + esc(b.title) + '</b><span>' + esc(staffName(b.owner_id)) + ' · ' + hm(b.start_time) + '–' + hm(b.end_time) + '</span></button>';
     }
     for (const s of evs) {
       const top = (minutesOf(s.starts_at) - CAL_START * 60) / 60 * HOUR_PX + 2;
@@ -596,7 +596,7 @@ function sidePanel() {
       const m = memberById(x.member_id); const st = SESSION_STATUS[x.status];
       return '<button type="button" class="list-row' + (x.id === S.selSessionId ? ' sel' : '') + '" data-act="openSession" data-id="' + x.id + '"><span class="dot" style="background:' + esc(staffColor(x.trainer_id)) + '"></span><span class="t-time">' + localTime(x.starts_at) + '</span><span class="grow"><b>' + esc(m ? m.name : '?') + '</b> <span class="muted small">' + esc(staffName(x.trainer_id)) + '</span></span><span class="pill ' + st.cls + '">' + st.label + '</span></button>';
     }).join('') : '<p class="muted small">이 날은 예약이 없어요.</p>') +
-    (blocksOn(S.calDate).length ? '<div class="small b mt8">고정 스케줄</div>' + blocksOn(S.calDate).map((b) => '<div class="list-row"><span class="dot" style="background:' + esc(staffColor(b.owner_id)) + '"></span><span class="t-time">' + hm(b.start_time) + '</span><span class="grow">' + esc(b.title) + ' <span class="muted small">' + esc(staffName(b.owner_id)) + ' · ~' + hm(b.end_time) + '</span></span></div>').join('') : '') +
+    (blocksOn(S.calDate).length ? '<div class="small b mt8">고정 스케줄 <span class="muted small">· 누르면 예약으로 들어가요</span></div>' + blocksOn(S.calDate).map((b) => '<button type="button" class="list-row" data-act="blockBook" data-id="' + b.id + '" data-d="' + S.calDate + '"><span class="dot" style="background:' + esc(staffColor(b.owner_id)) + '"></span><span class="t-time">' + hm(b.start_time) + '</span><span class="grow">' + esc(b.title) + ' <span class="muted small">' + esc(staffName(b.owner_id)) + ' · ~' + hm(b.end_time) + '</span></span><span class="pill pill-ok">+ 예약</span></button>').join('') : '') +
     '<button type="button" class="btn btn-sm mt8" data-act="slot" data-d="' + S.calDate + '" data-t="10:00">+ 이 날 예약 추가</button></section>';
   return html;
 }
@@ -905,14 +905,14 @@ function modalView() {
     submit = 'saveSession';
     const memberId = s ? s.member_id : md_.memberId || '';
     const m = memberId ? memberById(memberId) : null;
-    const trainerId = s ? s.trainer_id : (m ? m.trainer_id : S.me.id);
+    const trainerId = s ? s.trainer_id : (md_.trainerId || (m ? m.trainer_id : S.me.id));
     const date = s ? localDate(s.starts_at) : md_.date || S.calDate;
     const time = s ? localTime(s.starts_at) : md_.time || '10:00';
     const times = timeOptions(); if (!times.includes(time)) times.push(time);
     body = (S.members.length ? field('ss-member', '회원', '<select id="ss-member" name="member_id" required><option value="">회원 선택</option>' + memberOptions(memberId) + '</select>') : '<p class="form-err">먼저 회원·수강권 화면에서 회원을 등록해 주세요.</p>') +
       field('ss-trainer', '담당 강사', '<select id="ss-trainer" name="trainer_id">' + trainerOptions(trainerId) + '</select>') +
       '<div class="row gap8"><div class="grow stack4">' + field('ss-date', '날짜', '<input id="ss-date" name="date" type="date" required value="' + date + '">') + '</div><div class="grow stack4">' + field('ss-time', '시간', '<select id="ss-time" name="time">' + times.sort().map((t) => '<option' + (t === time ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + '</div></div>' +
-      field('ss-dur', '수업 시간(분)', '<input id="ss-dur" name="duration_min" type="number" min="10" max="240" step="5" value="' + (s ? s.duration_min : 60) + '">') +
+      field('ss-dur', '수업 시간(분)', '<input id="ss-dur" name="duration_min" type="number" min="10" max="240" step="5" value="' + (s ? s.duration_min : md_.duration || 60) + '">') +
       (s ? '' : field('ss-rep', '매주 같은 시간 반복', '<select id="ss-rep" name="repeat">' + [1, 2, 4, 8, 12].map((n) => '<option value="' + n + '">' + (n === 1 ? '한 번만' : n + '주 동안') + '</option>').join('') + '</select>')) +
       '<p class="muted small">회원의 이용 중인 수강권에 자동으로 연결돼요. 출석 처리하면 1회 차감돼요.</p>';
   } else if (md_.type === 'member') {
@@ -1181,6 +1181,25 @@ const actions = {
   tFilter: (d) => { S.tFilter = d.v; render(); },
   pickDay: (d) => { S.calDate = d.v; render(); },
   slot: (d) => { S.modal = { type: 'session', date: d.d, time: d.t }; render(); },
+  blockBook: (d) => run(async () => {
+    const b = S.blocks.find((x) => x.id === d.id); if (!b) return;
+    const date = d.d || S.calDate, time = hm(b.start_time);
+    const dur = Math.min(240, Math.max(10, timeMin(b.end_time) - timeMin(b.start_time)));
+    // 고정 스케줄 이름에 회원 이름이 들어 있으면 그 회원 예약으로 바로 넣기
+    const hits = S.members.filter((m) => m.name && b.title.includes(m.name));
+    if (hits.length === 1) {
+      const m = hits[0];
+      const startsAt = toIso(date, time);
+      if (S.sessions.some((x) => x.member_id === m.id && x.trainer_id === b.owner_id && x.status !== 'canceled' && x.starts_at === startsAt)) { toast('이미 예약돼 있어요.'); return; }
+      const pass = activePass(m.id);
+      await api.insert('sessions', [{ member_id: m.id, trainer_id: b.owner_id, pass_id: pass ? pass.id : null, starts_at: startsAt, duration_min: dur, status: 'reserved' }]);
+      S.calDate = date; S.screen = 'schedule';
+      await refreshAfterSessionChange();
+      toast(m.name + ' 회원 ' + longDay(date) + ' ' + time + ' 예약을 넣었어요.');
+      return;
+    }
+    S.modal = { type: 'session', date, time, trainerId: b.owner_id, duration: dur };
+  }),
   newSession: () => { S.modal = { type: 'session', date: S.calDate, time: '10:00' }; render(); },
   newSessionFor: (d) => { S.modal = { type: 'session', memberId: d.id, date: todayStr(), time: '10:00' }; render(); },
   editSession: (d) => { const s = S.sessions.find((x) => x.id === d.id) || S.todaySessions.find((x) => x.id === d.id); S.modal = { type: 'session', session: s }; render(); },
