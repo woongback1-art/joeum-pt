@@ -61,7 +61,6 @@ const S = {
   posts: [],
   blocks: [], // 강사 개인 고정 스케줄 (매주 반복)
   blockOwner: null,
-  quickDays: 'day', // 고정 스케줄 빠른 추가: day(이 요일만) / week(평일) / all(매일)
   tasks: [],
   sessions: [],
   sessionsRange: '',
@@ -556,25 +555,6 @@ function blocksView() {
     '<section class="card cal" aria-label="' + esc(owner.name) + ' 고정 스케줄 시간표"><div class="hscroll"><div class="wk">' + head + '<div class="wk-body" data-scroll-key="tt">' + hours + cols + '</div></div></div></section></div>';
 }
 
-function quickBlockOwner() {
-  const id = S.tFilter !== 'all' ? S.tFilter : S.me.id;
-  return isAdmin() || id === S.me.id ? id : S.me.id;
-}
-function quickBlockView() {
-  const owner = quickBlockOwner();
-  const seen = new Set(), tpl = [];
-  const add = (title, st, en) => { const k = title + '|' + st + '|' + en; if (!seen.has(k)) { seen.add(k); tpl.push({ title, st, en }); } };
-  S.blocks.filter((b) => b.owner_id === owner).forEach((b) => add(b.title, hm(b.start_time), hm(b.end_time)));
-  add('점심', '12:00', '13:00'); add('저녁 식사', '18:00', '19:00');
-  const w = dowOf(S.calDate);
-  const dayLabel = DOW[w] + '요일만';
-  const seg = [['day', dayLabel], ['week', '평일 전체'], ['all', '매일']].map(([k, l]) => '<button type="button" class="chip' + (S.quickDays === k ? ' on' : '') + '" data-act="quickDays" data-v="' + k + '" aria-pressed="' + (S.quickDays === k) + '">' + l + '</button>').join('');
-  const chips = tpl.slice(0, 8).map((t) => '<button type="button" class="chip" data-act="quickBlock" data-title="' + esc(t.title) + '" data-s="' + t.st + '" data-e="' + t.en + '"' + (S.busy ? ' disabled' : '') + '>+ ' + esc(t.title) + ' <span class="muted small">' + t.st + '–' + t.en + '</span></button>').join('');
-  return '<div class="small b mt8">고정 스케줄 빠른 추가 · ' + esc(staffName(owner)) + '</div>' +
-    '<p class="muted small" style="margin:2px 0 6px">누르면 바로 들어가요. 기존에 만든 고정 스케줄이 버튼으로 나와요.</p>' +
-    '<div class="row gap6 wrap">' + seg + '</div><div class="row gap6 wrap mt8">' + chips + '</div>';
-}
-
 function sidePanel() {
   let html = '';
   if (S.composer) html += composerView();
@@ -617,7 +597,7 @@ function sidePanel() {
       return '<button type="button" class="list-row' + (x.id === S.selSessionId ? ' sel' : '') + '" data-act="openSession" data-id="' + x.id + '"><span class="dot" style="background:' + esc(staffColor(x.trainer_id)) + '"></span><span class="t-time">' + localTime(x.starts_at) + '</span><span class="grow"><b>' + esc(m ? m.name : '?') + '</b> <span class="muted small">' + esc(staffName(x.trainer_id)) + '</span></span><span class="pill ' + st.cls + '">' + st.label + '</span></button>';
     }).join('') : '<p class="muted small">이 날은 예약이 없어요.</p>') +
     (blocksOn(S.calDate).length ? '<div class="small b mt8">고정 스케줄</div>' + blocksOn(S.calDate).map((b) => '<div class="list-row"><span class="dot" style="background:' + esc(staffColor(b.owner_id)) + '"></span><span class="t-time">' + hm(b.start_time) + '</span><span class="grow">' + esc(b.title) + ' <span class="muted small">' + esc(staffName(b.owner_id)) + ' · ~' + hm(b.end_time) + '</span></span></div>').join('') : '') +
-    '<button type="button" class="btn btn-sm mt8" data-act="slot" data-d="' + S.calDate + '" data-t="10:00">+ 이 날 예약 추가</button>' + quickBlockView() + '</section>';
+    '<button type="button" class="btn btn-sm mt8" data-act="slot" data-d="' + S.calDate + '" data-t="10:00">+ 이 날 예약 추가</button></section>';
   return html;
 }
 
@@ -1252,22 +1232,6 @@ const actions = {
   setCondition: (d) => { syncComposer(); S.composer.condition = S.composer.condition === d.v ? '' : d.v; render(); },
   setIntensity: (d) => { syncComposer(); S.composer.intensity = S.composer.intensity === d.v ? '' : d.v; render(); },
   newBlock: () => { S.modal = { type: 'block' }; render(); },
-  quickDays: (d) => { S.quickDays = d.v; render(); },
-  quickBlock: (d) => run(async () => {
-    const owner = quickBlockOwner();
-    const w = dowOf(S.calDate);
-    const want = S.quickDays === 'all' ? [1, 2, 3, 4, 5, 6, 0] : S.quickDays === 'week' ? [1, 2, 3, 4, 5] : [w];
-    const same = S.blocks.find((b) => b.owner_id === owner && b.title === d.title && hm(b.start_time) === d.s && hm(b.end_time) === d.e);
-    if (same) {
-      const merged = [...new Set([...(same.days || []), ...want])];
-      if (merged.length === (same.days || []).length) { toast('이미 들어 있어요.'); return; }
-      await api.update('blocks', same.id, { days: merged });
-    } else {
-      await api.insert('blocks', [{ owner_id: owner, title: d.title, days: want, start_time: d.s, end_time: d.e }]);
-    }
-    await loadCore();
-    toast('고정 스케줄에 넣었어요.');
-  }),
   blockOwner: (d) => { S.blockOwner = d.v; render(); },
   blockSlot: (d) => { const h = Number(d.t.slice(0, 2)); S.modal = { type: 'block', preset: { days: [Number(d.w)], start: d.t, end: pad(Math.min(CAL_END, h + 1)) + ':00' } }; render(); },
   editBlock: (d) => { S.modal = { type: 'block', block: S.blocks.find((b) => b.id === d.id) }; render(); },
