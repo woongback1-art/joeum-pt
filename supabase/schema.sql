@@ -335,3 +335,37 @@ grant execute on function public.is_shared_video(text) to anon, authenticated;
 drop policy if exists videos_select_shared on storage.objects;
 create policy videos_select_shared on storage.objects for select to anon
   using (bucket_id = 'videos' and public.is_shared_video(name));
+
+-- =============================================================
+-- 공지·매뉴얼: 관리자만 쓰기·수정·삭제, 강사는 읽기만
+-- =============================================================
+drop policy if exists posts_insert on public.posts;
+drop policy if exists posts_update on public.posts;
+drop policy if exists posts_delete_author on public.posts;
+create policy posts_insert on public.posts for insert to authenticated with check (public.is_admin());
+create policy posts_update on public.posts for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- =============================================================
+-- 개인 고정 스케줄 (매주 반복: 병원 근무, 점심 등)
+--  · 직원은 모두 볼 수 있음 / 본인 것만 추가·수정·삭제 (관리자는 전부)
+-- =============================================================
+create table if not exists public.blocks (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  title text not null,
+  days int[] not null,            -- 0=일 1=월 … 6=토
+  start_time time not null,
+  end_time time not null,
+  created_at timestamptz not null default now(),
+  check (end_time > start_time)
+);
+alter table public.blocks enable row level security;
+drop policy if exists blocks_select on public.blocks;
+drop policy if exists blocks_insert on public.blocks;
+drop policy if exists blocks_update on public.blocks;
+drop policy if exists blocks_delete on public.blocks;
+create policy blocks_select on public.blocks for select to authenticated using (public.is_staff());
+create policy blocks_insert on public.blocks for insert to authenticated with check (public.is_admin() or (public.is_staff() and owner_id = auth.uid()));
+create policy blocks_update on public.blocks for update to authenticated using (public.is_admin() or (public.is_staff() and owner_id = auth.uid())) with check (public.is_admin() or (public.is_staff() and owner_id = auth.uid()));
+create policy blocks_delete on public.blocks for delete to authenticated using (public.is_admin() or (public.is_staff() and owner_id = auth.uid()));
+grant select, insert, update, delete on public.blocks to authenticated;

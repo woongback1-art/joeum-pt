@@ -59,6 +59,7 @@ const S = {
   usage: {},
   payments: [],
   posts: [],
+  blocks: [], // 강사 개인 고정 스케줄 (매주 반복)
   tasks: [],
   sessions: [],
   sessionsRange: '',
@@ -299,10 +300,11 @@ const NAV = [
   { key: 'journal', label: '수업일지' },
   { key: 'sales', label: '매출·결제', trainerLabel: '내 매출' },
   { key: 'board', label: '공지·매뉴얼·할 일' },
+  { key: 'blocks', label: '고정 스케줄' },
   { key: 'staff', label: '직원 관리', adminOnly: true },
   { key: 'myinfo', label: '내 정보' },
 ];
-const TITLES = { home: '오늘의 센터', schedule: '예약·출석', members: '회원·수강권', journal: '수업일지', sales: '매출·결제', board: '공지·매뉴얼·할 일', staff: '직원 관리', myinfo: '내 정보' };
+const TITLES = { blocks: '개인 고정 스케줄', home: '오늘의 센터', schedule: '예약·출석', members: '회원·수강권', journal: '수업일지', sales: '매출·결제', board: '공지·매뉴얼·할 일', staff: '직원 관리', myinfo: '내 정보' };
 
 function layoutView() {
   const today = todayStr();
@@ -345,6 +347,7 @@ function screenView() {
     case 'board': return boardView();
     case 'staff': return isAdmin() ? staffView() : '';
     case 'myinfo': return myInfoView();
+    case 'blocks': return blocksView();
     default: return homeView();
   }
 }
@@ -428,7 +431,7 @@ function scheduleView() {
     '<div class="row gap8 wrap"><div class="seg" role="group" aria-label="보기">' +
       '<button type="button" class="' + (S.calView === 'week' ? 'on' : '') + '" data-act="calView" data-v="week" aria-pressed="' + (S.calView === 'week') + '">주간</button>' +
       '<button type="button" class="' + (S.calView === 'month' ? 'on' : '') + '" data-act="calView" data-v="month" aria-pressed="' + (S.calView === 'month') + '">월간</button></div>' +
-      '<button type="button" class="btn btn-primary" data-act="newSession">+ 예약 추가</button></div></div>' +
+      '<button type="button" class="btn" data-act="go" data-v="blocks">고정 스케줄</button><button type="button" class="btn btn-primary" data-act="newSession">+ 예약 추가</button></div></div>' +
     '<div class="row gap6 wrap">' + chips + '<span class="muted small ml8">흰 칸 예약 · 색칠된 칸 출석 · 빈 시간 클릭하면 예약 추가</span></div>';
   const cal = S.calView === 'week' ? weekView(ws) : monthView();
   return '<div class="stack16">' + toolbar + '<div class="sched"><section class="card cal" aria-label="달력">' + cal + '</section><aside class="side-panel">' + sidePanel() + '</aside></div></div>';
@@ -452,6 +455,11 @@ function weekView(ws) {
       const now = new Date();
       const top = ((now.getHours() * 60 + now.getMinutes()) - CAL_START * 60) / 60 * HOUR_PX;
       if (top > 0 && top < (CAL_END - CAL_START) * HOUR_PX) inner += '<div class="now-line" style="top:' + top + 'px" aria-hidden="true"></div>';
+    }
+    for (const b of blocksOn(d)) {
+      const top = (timeMin(b.start_time) - CAL_START * 60) / 60 * HOUR_PX;
+      const h = Math.max(20, (timeMin(b.end_time) - timeMin(b.start_time)) / 60 * HOUR_PX);
+      inner += '<div class="blk" style="top:' + top + 'px;height:' + h + 'px;border-color:' + esc(staffColor(b.owner_id)) + '" title="' + esc(staffName(b.owner_id) + ' · ' + b.title) + '"><b>' + esc(b.title) + '</b><span>' + esc(staffName(b.owner_id)) + ' · ' + hm(b.start_time) + '–' + hm(b.end_time) + '</span></div>';
     }
     for (const s of evs) {
       const top = (minutesOf(s.starts_at) - CAL_START * 60) / 60 * HOUR_PX + 2;
@@ -485,6 +493,39 @@ function monthView() {
     html += '<button type="button" class="mo-cell' + (d.slice(0, 7) !== cur ? ' out' : '') + (d === S.calDate ? ' sel' : '') + '" data-act="pickDay" data-v="' + d + '" aria-label="' + longDay(d) + ' 일정 ' + evs.length + '건"><span class="daynum sm' + (d === today ? ' today' : '') + '">' + Number(d.slice(8)) + '</span>' + chips + (evs.length > 3 ? '<span class="muted small">+' + (evs.length - 3) + '건 더</span>' : '') + '</button>';
   }
   return html + '</div></div></div>';
+}
+
+// ---------- 개인 고정 스케줄 ----------
+const hm = (t) => String(t || '').slice(0, 5);
+const timeMin = (t) => Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5));
+function blocksOn(d) {
+  const w = dowOf(d);
+  return S.blocks.filter((b) => (b.days || []).includes(w) && (S.tFilter === 'all' || b.owner_id === S.tFilter)).sort((a, b) => (a.start_time < b.start_time ? -1 : 1));
+}
+function blockConflicts(trainerId, date, time, dur) {
+  const w = dowOf(date), st = timeMin(time), en = st + (Number(dur) || 60);
+  return S.blocks.filter((b) => b.owner_id === trainerId && (b.days || []).includes(w) && timeMin(b.start_time) < en && st < timeMin(b.end_time));
+}
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+function daysLabel(days) {
+  const d = (days || []).slice().sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b));
+  if (d.length === 7) return '매일';
+  if (d.join() === '1,2,3,4,5') return '평일';
+  if (d.join() === '6,0') return '주말';
+  return d.map((x) => DOW[x]).join('·');
+}
+
+function blocksView() {
+  const owners = isAdmin() ? trainers() : trainers().filter((p) => p.id === S.me.id);
+  const groups = owners.map((p) => {
+    const list = S.blocks.filter((b) => b.owner_id === p.id).sort((a, b) => (DAY_ORDER.indexOf((a.days || [])[0]) - DAY_ORDER.indexOf((b.days || [])[0])) || (a.start_time < b.start_time ? -1 : 1));
+    return '<section class="card"><div class="row gap8 mb8"><span class="dot lg" style="background:' + esc(p.color) + '"></span><h2 class="h3" style="margin:0">' + esc(p.name) + (p.id === S.me.id ? ' (나)' : '') + '</h2></div>' +
+      (list.length ? list.map((b) => '<div class="list-row"><span class="grow"><b>' + esc(b.title) + '</b><br><span class="muted small">' + daysLabel(b.days) + ' · ' + hm(b.start_time) + '–' + hm(b.end_time) + '</span></span>' +
+        ((isAdmin() || b.owner_id === S.me.id) ? '<button type="button" class="btn btn-sm" data-act="editBlock" data-id="' + b.id + '">수정</button><button type="button" class="btn btn-sm danger-text" data-act="deleteBlock" data-id="' + b.id + '">삭제</button>' : '') + '</div>').join('')
+        : '<p class="muted small">등록된 고정 스케줄이 없어요.</p>') + '</section>';
+  }).join('');
+  return '<div class="stack16"><div class="card row-between wrap gap8"><p class="muted small" style="margin:0">병원 근무, 점심, 개인 운동처럼 <b>매주 반복되는 내 일정</b>을 넣어 두면 예약·출석 달력에 회색 칸으로 보여요. 그 시간에 예약을 잡으면 겹친다고 알려 줘요.</p><button type="button" class="btn btn-primary" data-act="newBlock">+ 고정 스케줄 추가</button></div>' +
+    '<div class="grid2">' + groups + '</div></div>';
 }
 
 function sidePanel() {
@@ -528,6 +569,7 @@ function sidePanel() {
       const m = memberById(x.member_id); const st = SESSION_STATUS[x.status];
       return '<button type="button" class="list-row' + (x.id === S.selSessionId ? ' sel' : '') + '" data-act="openSession" data-id="' + x.id + '"><span class="dot" style="background:' + esc(staffColor(x.trainer_id)) + '"></span><span class="t-time">' + localTime(x.starts_at) + '</span><span class="grow"><b>' + esc(m ? m.name : '?') + '</b> <span class="muted small">' + esc(staffName(x.trainer_id)) + '</span></span><span class="pill ' + st.cls + '">' + st.label + '</span></button>';
     }).join('') : '<p class="muted small">이 날은 예약이 없어요.</p>') +
+    (blocksOn(S.calDate).length ? '<div class="small b mt8">고정 스케줄</div>' + blocksOn(S.calDate).map((b) => '<div class="list-row"><span class="dot" style="background:' + esc(staffColor(b.owner_id)) + '"></span><span class="t-time">' + hm(b.start_time) + '</span><span class="grow">' + esc(b.title) + ' <span class="muted small">' + esc(staffName(b.owner_id)) + ' · ~' + hm(b.end_time) + '</span></span></div>').join('') : '') +
     '<button type="button" class="btn btn-sm mt8" data-act="slot" data-d="' + S.calDate + '" data-t="10:00">+ 이 날 예약 추가</button></section>';
   return html;
 }
@@ -719,7 +761,7 @@ function boardView() {
     const list = S.posts.filter((p) => p.kind === kind);
     return list.length ? list.map((p) => {
       const open = S.openPost === p.id;
-      const canEdit = isAdmin() || p.author_id === S.me.id;
+      const canEdit = isAdmin();
       return '<div class="post"><button type="button" class="post-head" data-act="togglePost" data-id="' + p.id + '" aria-expanded="' + open + '"><b>' + esc(p.title) + '</b><span class="muted small">' + md(localDate(p.created_at)) + ' · ' + esc(staffName(p.author_id)) + '</span></button>' +
         (open ? '<div class="pre small post-body">' + esc(p.body) + '</div>' + (canEdit ? '<div class="row gap8 mb8"><button type="button" class="link small" data-act="editPost" data-id="' + p.id + '">수정</button><button type="button" class="link small danger-text" data-act="deletePost" data-id="' + p.id + '">삭제</button></div>' : '') : '') + '</div>';
     }).join('') : '<p class="muted small">아직 없어요.</p>';
@@ -727,8 +769,8 @@ function boardView() {
   const sorted = S.tasks.slice().sort((a, b) => (a.done === b.done ? ((a.due_date || '9') < (b.due_date || '9') ? -1 : 1) : a.done ? 1 : -1));
   const owners = trainers().map((p) => '<option value="' + p.id + '"' + (p.id === S.me.id ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
   return '<div class="grid3">' +
-    '<section class="card"><div class="row-between mb8"><h2 class="h3">센터 공지</h2><button type="button" class="btn btn-sm" data-act="newPost" data-v="notice">+ 공지</button></div>' + postList('notice') + '</section>' +
-    '<section class="card"><div class="row-between mb8"><h2 class="h3">업무 매뉴얼</h2><button type="button" class="btn btn-sm" data-act="newPost" data-v="manual">+ 매뉴얼</button></div>' + postList('manual') + '</section>' +
+    '<section class="card"><div class="row-between mb8"><h2 class="h3">센터 공지</h2>' + (isAdmin() ? '<button type="button" class="btn btn-sm" data-act="newPost" data-v="notice">+ 공지</button>' : '') + '</div>' + postList('notice') + '</section>' +
+    '<section class="card"><div class="row-between mb8"><h2 class="h3">업무 매뉴얼</h2>' + (isAdmin() ? '<button type="button" class="btn btn-sm" data-act="newPost" data-v="manual">+ 매뉴얼</button>' : '') + '</div>' + postList('manual') + '</section>' +
     '<section class="card"><h2 class="h3">할 일</h2>' +
       '<form class="stack6 mb12" data-submit="addTask"><label for="task-title" class="small b">새 할 일</label><input id="task-title" name="title" required placeholder="예: 락커 정리"><div class="row gap6"><label class="sr" for="task-owner">담당</label><select id="task-owner" name="owner_id">' + owners + '</select><label class="sr" for="task-due">마감일</label><input id="task-due" name="due_date" type="date"><button class="btn btn-primary" type="submit">추가</button></div></form>' +
       sorted.map(taskRow).join('') + '</section></div>';
@@ -829,6 +871,19 @@ function modalView() {
     title = (p ? '수정 · ' : '새 ') + (kind === 'manual' ? '매뉴얼' : '공지');
     submit = 'savePost';
     body = '<input type="hidden" name="kind" value="' + kind + '">' + field('po-title', '제목', '<input id="po-title" name="title" required value="' + esc(p ? p.title : '') + '">') + field('po-body', '내용', '<textarea id="po-body" name="body" rows="8">' + esc(p ? p.body : '') + '</textarea>');
+  } else if (md_.type === 'block') {
+    const b = md_.block;
+    title = b ? '고정 스케줄 수정' : '고정 스케줄 추가';
+    submit = 'saveBlock';
+    const days = b ? b.days : [1, 2, 3, 4, 5];
+    const times = timeOptions().concat([pad(CAL_END) + ':00']);
+    const st = b ? hm(b.start_time) : '09:00', en = b ? hm(b.end_time) : '18:00';
+    if (!times.includes(st)) times.push(st); if (!times.includes(en)) times.push(en); times.sort();
+    body = (isAdmin() ? field('bl-owner', '누구 일정', '<select id="bl-owner" name="owner_id">' + trainerOptions(b ? b.owner_id : S.me.id) + '</select>') : '') +
+      field('bl-title', '내용', '<input id="bl-title" name="title" required value="' + esc(b ? b.title : '') + '" placeholder="예: 병원 근무, 점심, 개인 운동">') +
+      '<fieldset class="fs"><legend>요일</legend><div class="row gap6 wrap">' + DAY_ORDER.map((w) => '<label class="day-check"><input type="checkbox" name="day" value="' + w + '"' + (days.includes(w) ? ' checked' : '') + '><span>' + DOW[w] + '</span></label>').join('') + '</div>' +
+      '<div class="row gap6 wrap"><button type="button" class="chip" data-act="blockDays" data-v="1,2,3,4,5">평일</button><button type="button" class="chip" data-act="blockDays" data-v="6,0">주말</button><button type="button" class="chip" data-act="blockDays" data-v="1,2,3,4,5,6,0">매일</button></div></fieldset>' +
+      '<div class="row gap8"><div class="grow stack4">' + field('bl-start', '시작', '<select id="bl-start" name="start_time">' + times.map((t) => '<option' + (t === st ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + '</div><div class="grow stack4">' + field('bl-end', '끝', '<select id="bl-end" name="end_time">' + times.map((t) => '<option' + (t === en ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + '</div></div>';
   } else if (md_.type === 'share') {
     title = '회원에게 일지 보내기';
     body = '<p class="small">' + esc(md_.memberName) + ' 회원님 전용 링크예요. 로그인 없이 운동 내용과 영상을 볼 수 있어요.</p>' +
@@ -869,7 +924,7 @@ async function loadMe() {
 }
 
 async function loadCore() {
-  const [profiles, members, passes, usage, payments, posts, tasks] = await Promise.all([
+  const [profiles, members, passes, usage, payments, posts, tasks, blocks] = await Promise.all([
     api.select('profiles', { order: 'created_at.asc' }),
     api.select('members', { order: 'name.asc' }),
     api.select('passes', { order: 'end_date.desc' }),
@@ -877,8 +932,9 @@ async function loadCore() {
     api.select('payments', { order: 'paid_on.desc' }),
     api.select('posts', { order: 'created_at.desc' }),
     api.select('tasks', { order: 'created_at.desc' }),
+    api.select('blocks', { order: 'start_time.asc' }).catch(() => []),
   ]);
-  Object.assign(S, { profiles, members, passes, payments, posts, tasks });
+  Object.assign(S, { profiles, members, passes, payments, posts, tasks, blocks });
   S.usage = {};
   for (const u of usage) S.usage[u.pass_id] = u.used;
   const me = profiles.find((p) => p.id === S.me.id);
@@ -1075,6 +1131,10 @@ const actions = {
     S.composer = { sessionId: d.id, journalId: j ? j.id : null, rows: j && j.items.length ? j.items.map(itemToRow) : [emptyRow()] };
   }),
   closeComposer: () => { S.composer = null; render(); },
+  newBlock: () => { S.modal = { type: 'block' }; render(); },
+  editBlock: (d) => { S.modal = { type: 'block', block: S.blocks.find((b) => b.id === d.id) }; render(); },
+  deleteBlock: (d) => { const b = S.blocks.find((x) => x.id === d.id); confirmBox('고정 스케줄 삭제', b.title + ' (' + daysLabel(b.days) + ' ' + hm(b.start_time) + '–' + hm(b.end_time) + ') 을 지울까요?', '삭제', async () => { await api.remove('blocks', d.id); await loadCore(); }); },
+  blockDays: (d) => { const on = d.v.split(','); document.querySelectorAll('input[name=day]').forEach((el) => { el.checked = on.includes(el.value); }); },
   shareJournal: (d) => run(async () => {
     const rows = await api.select('journals', { filters: [['id', 'eq', d.id]] });
     let j = rows[0];
@@ -1250,11 +1310,25 @@ const submits = {
       for (let i = 0; i < n; i++) rows.push({ member_id: v.member_id, trainer_id: v.trainer_id, pass_id: pass ? pass.id : null, starts_at: toIso(addDays(v.date, 7 * i), v.time), duration_min: Number(v.duration_min) || 60, status: 'reserved' });
       await api.insert('sessions', rows);
     }
+    const clash = blockConflicts(v.trainer_id, v.date, v.time, v.duration_min);
     S.modal = null;
     S.calDate = v.date;
+    if (clash.length) setTimeout(() => toast('저장했어요. 단, ' + staffName(v.trainer_id) + ' 강사의 고정 스케줄(' + clash[0].title + ' ' + hm(clash[0].start_time) + '–' + hm(clash[0].end_time) + ')과 겹쳐요.'), 50);
     if (S.screen !== 'members') S.screen = 'schedule';
     await refreshAfterSessionChange();
   }, '예약을 저장했어요.'),
+
+  saveBlock: (v, form) => run(async () => {
+    const days = [...form.querySelectorAll('input[name=day]:checked')].map((el) => Number(el.value));
+    if (!days.length) throw new Error('요일을 하나 이상 골라 주세요.');
+    if (v.end_time <= v.start_time) throw new Error('끝나는 시간이 시작 시간보다 늦어야 해요.');
+    const row = { owner_id: isAdmin() && v.owner_id ? v.owner_id : S.me.id, title: v.title.trim(), days, start_time: v.start_time, end_time: v.end_time };
+    const b = S.modal.block;
+    if (b) await api.update('blocks', b.id, row);
+    else await api.insert('blocks', [row]);
+    S.modal = null;
+    await loadCore();
+  }, '고정 스케줄을 저장했어요.'),
 
   saveMember: (v) => run(async () => {
     const m = S.modal.member;

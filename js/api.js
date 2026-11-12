@@ -311,7 +311,7 @@ function seedMock() {
     { id: uuid(), kind: 'notice', title: '체험 모드입니다', body: '여기서 입력한 내용은 이 브라우저에만 저장돼요.\n실제 저장은 Supabase에 로그인해서 쓰면 돼요.', author_id: admin.id, created_at: now.toISOString() },
   ];
   const tasks = [{ id: uuid(), title: '최민지 회원 재등록 상담', owner_id: t2.id, due_date: addDays(2), done: false, created_at: now.toISOString() }];
-  return { profiles: [admin, t1, t2], members, passes, sessions, journals, payments, posts, tasks, videos: {} };
+  return { blocks: [{ id: uuid(), owner_id: t1.id, title: '병원 근무', days: [1, 2, 3, 4, 5], start_time: '09:00', end_time: '18:00', created_at: now.toISOString() }], profiles: [admin, t1, t2], members, passes, sessions, journals, payments, posts, tasks, videos: {} };
 }
 
 export class MockApi {
@@ -396,11 +396,13 @@ export class MockApi {
     const me = this._me();
     const out = rows.map((r) => {
       if (table === 'payments' && !this._admin() && r.trainer_id !== me.id) throw new ApiError('이 작업을 할 권한이 없어요.', 403);
+      if (table === 'posts' && !this._admin()) throw new ApiError('공지·매뉴얼은 관리자만 올릴 수 있어요.', 403);
       return Object.assign({ id: uuid(), created_at: new Date().toISOString() }, r);
     });
     if (table === 'journals') {
       for (const r of out) if (r.session_id && this.db.journals.some((j) => j.session_id === r.session_id)) throw new ApiError('이미 일지가 있어요.', 409);
     }
+    this.db[table] = this.db[table] || [];
     this.db[table].push(...out);
     this._save();
     return JSON.parse(JSON.stringify(out));
@@ -408,9 +410,10 @@ export class MockApi {
 
   async update(table, id, patch) {
     if (!this._staff()) throw new ApiError('이 작업을 할 권한이 없어요.', 403);
-    if ((table === 'profiles' || table === 'payments') && !this._admin()) throw new ApiError('이 작업을 할 권한이 없어요.', 403);
-    const row = this.db[table].find((r) => r.id === id);
+    if ((table === 'profiles' || table === 'payments' || table === 'posts') && !this._admin()) throw new ApiError('이 작업을 할 권한이 없어요.', 403);
+    const row = (this.db[table] || []).find((r) => r.id === id);
     if (!row) throw new ApiError('찾을 수 없어요.', 404);
+    if (table === 'blocks' && !this._admin() && row.owner_id !== this.userId) throw new ApiError('이 작업을 할 권한이 없어요.', 403);
     Object.assign(row, patch);
     this._save();
     return JSON.parse(JSON.stringify(row));
@@ -420,7 +423,7 @@ export class MockApi {
     const me = this._me();
     const row = (this.db[table] || []).find((r) => r.id === id);
     if (!row) return;
-    const ownerOk = (table === 'tasks' && row.owner_id === me.id) || (table === 'posts' && row.author_id === me.id) || (table === 'sessions' && row.trainer_id === me.id) || (table === 'journals' && row.trainer_id === me.id);
+    const ownerOk = (table === 'tasks' && row.owner_id === me.id) || (table === 'sessions' && row.trainer_id === me.id) || (table === 'journals' && row.trainer_id === me.id) || (table === 'blocks' && row.owner_id === me.id);
     if (!this._admin() && !(this._staff() && ownerOk)) throw new ApiError('삭제할 권한이 없어요.', 403);
     this.db[table] = this.db[table].filter((r) => r.id !== id);
     if (table === 'sessions') this.db.journals = this.db.journals.filter((j) => j.session_id !== id);
