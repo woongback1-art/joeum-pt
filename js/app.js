@@ -788,12 +788,15 @@ function journalMemberView() {
 
 // ---------- 강사 수업료 (프리랜서 3.3%) ----------
 // 소득세 3% (10원 미만 버림) + 지방소득세 = 소득세의 10% (10원 미만 버림)
-function freelancePay(count, rate) {
+function freelancePay(count, rate, withTax) {
   const gross = count * rate;
+  if (withTax === undefined ? !taxOn() : !withTax) return { gross, tax: 0, incomeTax: 0, localTax: 0, net: gross };
   const incomeTax = Math.floor(gross * 0.03 / 10) * 10;
   const localTax = Math.floor(incomeTax * 0.1 / 10) * 10;
   return { gross, tax: incomeTax + localTax, incomeTax, localTax, net: gross - incomeTax - localTax };
 }
+// 3.3% 공제 적용 여부 (선택사항, 이 기기에 기억. 기본은 적용)
+function taxOn() { try { return localStorage.getItem('joeum.tax33') !== '0'; } catch (e) { return true; } }
 const payRate = (p) => (p && Number(p.session_pay)) || 30000;
 
 function payView() {
@@ -803,12 +806,13 @@ function payView() {
     return Object.assign({ p, count, rate: payRate(p) }, freelancePay(count, payRate(p)));
   }).filter((r) => r.count > 0 || r.p.role === 'trainer' || r.p.id === S.me.id);
   const sum = rows.reduce((a, r) => ({ gross: a.gross + r.gross, tax: a.tax + r.tax, net: a.net + r.net, count: a.count + r.count }), { gross: 0, tax: 0, net: 0, count: 0 });
-  const tr = (r) => '<tr><td><b>' + esc(r.p.name) + '</b></td><td class="r num">' + r.count + '회</td><td class="r num">' + won(r.rate) + '</td><td class="r num">' + won(r.gross) + '</td><td class="r num">-' + won(r.tax) + '</td><td class="r num"><b>' + won(r.net) + '</b></td></tr>';
+  const tr = (r) => '<tr><td><b>' + esc(r.p.name) + '</b></td><td class="r num">' + r.count + '회</td><td class="r num">' + won(r.rate) + '</td><td class="r num">' + won(r.gross) + '</td><td class="r num">' + (taxOn() ? '-' + won(r.tax) + '</td><td class="r num">' : '') + '<b>' + won(r.net) + '</b></td></tr>';
   return '<section class="card"><div class="row-between"><h3 class="h3">' + (isAdmin() ? '강사 수업료 (프리랜서)' : '내 수업료 (프리랜서)') + '</h3><span class="muted small">출석 처리된 수업 기준</span></div>' +
-    '<div class="hscroll"><table class="tbl"><thead><tr><th>강사</th><th class="r">수업</th><th class="r">회당</th><th class="r">수업료</th><th class="r">3.3% 공제</th><th class="r">실지급액</th></tr></thead><tbody>' +
-    (rows.length ? rows.map(tr).join('') : '<tr><td colspan="6" class="muted">이 달 출석 처리된 수업이 없어요.</td></tr>') +
-    (isAdmin() && rows.length > 1 ? '<tr><td><b>합계</b></td><td class="r num">' + sum.count + '회</td><td></td><td class="r num">' + won(sum.gross) + '</td><td class="r num">-' + won(sum.tax) + '</td><td class="r num"><b>' + won(sum.net) + '</b></td></tr>' : '') +
-    '</tbody></table></div>' + (() => { const n = S.unchecked.filter((s) => (isAdmin() || s.trainer_id === S.me.id) && s.starts_at.slice(0, 7) <= S.salesMonth).length; return n ? '<p class="form-err">출석 처리 안 된 지난 수업이 ' + n + '건 있어요. 대시보드에서 출석 처리하면 수업료에 들어가요.</p>' : ''; })() + '<p class="muted small">3.3% = 소득세 3% + 지방소득세 0.3% (10원 미만 버림). 노쇼·취소 수업은 빠져요.' + (isAdmin() ? ' 회당 금액은 직원 관리에서 강사별로 바꿀 수 있어요.' : '') + '</p></section>';
+    '<div class="row gap8 wrap mb8"><span class="small b">3.3% 세금 공제</span><div class="seg" role="group" aria-label="3.3% 세금 공제 적용 여부"><button type="button" class="' + (taxOn() ? 'on' : '') + '" data-act="taxToggle" data-v="1" aria-pressed="' + taxOn() + '">적용</button><button type="button" class="' + (!taxOn() ? 'on' : '') + '" data-act="taxToggle" data-v="0" aria-pressed="' + !taxOn() + '">미적용</button></div><span class="muted small">' + (taxOn() ? '수업료에서 3.3%를 빼고 정산해요.' : '세금을 빼지 않고 수업료 그대로 정산해요.') + '</span></div>' +
+    '<div class="hscroll"><table class="tbl"><thead><tr><th>강사</th><th class="r">수업</th><th class="r">단가</th><th class="r">수업료</th>' + (taxOn() ? '<th class="r">3.3% 공제</th>' : '') + '<th class="r">' + (taxOn() ? '실지급액' : '정산액') + '</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(tr).join('') : '<tr><td colspan="' + (taxOn() ? 6 : 5) + '" class="muted">이 달 출석 처리된 수업이 없어요.</td></tr>') +
+    (isAdmin() && rows.length > 1 ? '<tr><td><b>합계</b></td><td class="r num">' + sum.count + '회</td><td></td><td class="r num">' + won(sum.gross) + '</td><td class="r num">' + (taxOn() ? '-' + won(sum.tax) + '</td><td class="r num">' : '') + '<b>' + won(sum.net) + '</b></td></tr>' : '') +
+    '</tbody></table></div>' + (() => { const n = S.unchecked.filter((s) => (isAdmin() || s.trainer_id === S.me.id) && s.starts_at.slice(0, 7) <= S.salesMonth).length; return n ? '<p class="form-err">출석 처리 안 된 지난 수업이 ' + n + '건 있어요. 대시보드에서 출석 처리하면 수업료에 들어가요.</p>' : ''; })() + '<p class="muted small">정산액 = 수업 횟수 × 단가' + (taxOn() ? ' − 3.3%(소득세 3% + 지방소득세 0.3%, 10원 미만 버림)' : '') + '. 노쇼·취소 수업은 빠져요.' + (isAdmin() ? ' 단가는 직원 관리에서 강사별로 바꿀 수 있어요.' : '') + ' 이 선택은 이 기기에 저장돼요.' + '</p></section>';
 }
 
 // ---------- 매출 ----------
@@ -825,7 +829,7 @@ function salesView() {
       '<div class="card kpi"><div class="muted small">' + (isAdmin() ? '매출' : '내 매출') + '</div><div class="kpi-v">' + won(total) + '</div></div>' +
       '<div class="card kpi"><div class="muted small">결제 건수</div><div class="kpi-v">' + pays.length + '건</div></div>' +
       '<div class="card kpi"><div class="muted small">객단가</div><div class="kpi-v">' + won(pays.length ? Math.round(total / pays.length) : 0) + '</div></div>' +
-      (!isAdmin() && S.monthDone ? (() => { const c = S.monthDone.filter((x) => x.trainer_id === S.me.id).length; const f = freelancePay(c, payRate(S.me)); return '<div class="card kpi"><div class="muted small">내 수업료 실지급액</div><div class="kpi-v">' + won(f.net) + '</div><div class="muted small">' + c + '회 × ' + won(payRate(S.me)) + ' − 3.3%</div></div>'; })() : '') +
+      (!isAdmin() && S.monthDone ? (() => { const c = S.monthDone.filter((x) => x.trainer_id === S.me.id).length; const f = freelancePay(c, payRate(S.me)); return '<div class="card kpi"><div class="muted small">' + (taxOn() ? '내 수업료 실지급액' : '내 수업료 정산액') + '</div><div class="kpi-v">' + won(f.net) + '</div><div class="muted small">' + c + '회 × ' + won(payRate(S.me)) + (taxOn() ? ' − 3.3%' : '') + '</div></div>'; })() : '') +
     '</div>' + payView() +
     '<div class="grid2">' +
       '<section class="card"><h3 class="h3">' + (isAdmin() ? '강사별 매출' : '내 매출') + '</h3>' + by.map((b) => '<div class="stack4 mb12"><div class="row-between"><span>' + esc(b.p.name) + '</span><b class="num">' + won(b.amt) + '</b></div><div class="bar"><div style="width:' + Math.round(b.amt / max * 100) + '%;background:' + esc(b.p.color) + '"></div></div></div>').join('') + (isAdmin() ? '' : '<p class="muted small">다른 강사의 매출은 볼 수 없어요.</p>') + '</section>' +
@@ -868,7 +872,7 @@ function staffView() {
     '<div class="grow"><label class="sr" for="sn-' + p.id + '">이름</label><input id="sn-' + p.id + '" name="name" value="' + esc(p.name) + '"><div class="muted small">' + esc(p.email || '') + '</div></div>' +
     '<label class="sr" for="sr-' + p.id + '">권한</label><select id="sr-' + p.id + '" name="role"' + (p.id === S.me.id ? ' disabled' : '') + '>' +
       [['pending', '승인 대기'], ['trainer', '강사'], ['admin', '관리자']].map(([v, l]) => '<option value="' + v + '"' + (p.role === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
-    '<label class="small" for="sp-' + p.id + '">회당</label><input id="sp-' + p.id + '" name="session_pay" type="number" min="0" step="1000" value="' + payRate(p) + '" style="width:110px">' +
+    '<label class="small" for="sp-' + p.id + '">단가(회당)</label><input id="sp-' + p.id + '" name="session_pay" type="number" min="0" step="1000" value="' + payRate(p) + '" style="width:110px">' +
     '<label class="sr" for="sc-' + p.id + '">색</label><select id="sc-' + p.id + '" name="color">' + COLORS.map((c, i) => '<option value="' + c + '"' + (p.color === c ? ' selected' : '') + '>색 ' + (i + 1) + '</option>').join('') + '</select>' +
     '<button class="btn btn-sm btn-primary" type="submit">저장</button>' + (p.role === 'pending' ? '<span class="pill pill-warn">승인 필요</span>' : '') + '</form>').join('');
   return '<div class="stack16"><div class="card"><h2 class="h3">직원 ' + S.profiles.length + '명</h2><p class="muted small">새 직원은 로그인 화면의 <b>가입 신청</b>으로 계정을 만들고, 여기서 <b>강사</b>로 바꿔 주면 쓸 수 있어요. 관리자는 전체 매출을, 강사는 본인 매출만 봐요.</p>' + rows + '</div></div>';
@@ -1200,6 +1204,7 @@ const actions = {
     }
     S.modal = { type: 'session', date, time, trainerId: b.owner_id, duration: dur };
   }),
+  taxToggle: (d) => { try { localStorage.setItem('joeum.tax33', d.v === '1' ? '1' : '0'); } catch (e) { /* 저장 불가 시 무시 */ } render(); },
   newSession: () => { S.modal = { type: 'session', date: S.calDate, time: '10:00' }; render(); },
   newSessionFor: (d) => { S.modal = { type: 'session', memberId: d.id, date: todayStr(), time: '10:00' }; render(); },
   editSession: (d) => { const s = S.sessions.find((x) => x.id === d.id) || S.todaySessions.find((x) => x.id === d.id); S.modal = { type: 'session', session: s }; render(); },
