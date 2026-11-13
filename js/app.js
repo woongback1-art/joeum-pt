@@ -85,6 +85,8 @@ const S = {
   salesMonth: todayStr().slice(0, 7),
   statMonth: todayStr().slice(0, 7),
   statRows: null, // 최근 6개월 수업 (통계용)
+  statOpen: null, // 펼친 강사
+  statKind: 'all', // 상세 목록 상태 필터
   monthDone: null, // 이번 달 출석 처리된 수업 (수업료 계산용)
   openPost: null,
   modal: null,
@@ -824,8 +826,31 @@ async function loadStats() {
   const months = statMonths();
   const from = new Date(months[0] + '-01T00:00:00').toISOString();
   const to = new Date(addMonths(S.statMonth + '-01', 1) + 'T00:00:00').toISOString();
-  S.statRows = await api.select('sessions', { select: 'id,trainer_id,starts_at,status', filters: [['starts_at', 'gte', from], ['starts_at', 'lt', to]], order: 'starts_at.asc', limit: 20000 });
+  S.statRows = await api.select('sessions', { select: 'id,trainer_id,member_id,starts_at,status', filters: [['starts_at', 'gte', from], ['starts_at', 'lt', to]], order: 'starts_at.asc', limit: 20000 });
 }
+function statKey(x, nowIso) { return x.status === 'reserved' ? (x.starts_at < nowIso ? 'unchecked' : 'left') : x.status; }
+const STAT_KINDS = [['all', '전체'], ['done', '출석'], ['noshow', '노쇼'], ['canceled', '취소'], ['unchecked', '출석 처리 안 됨'], ['left', '남은 예약']];
+const STAT_PILL = { done: ['출석', 'pill-ok'], noshow: ['노쇼', 'pill-warn'], canceled: ['취소', 'pill-mute'], unchecked: ['처리 안 됨', 'pill-warn'], left: ['예약', 'pill-blue'] };
+function statDetailView(cur, nowIso) {
+  const p = S.statOpen ? profileById(S.statOpen) : null;
+  if (!p) return '';
+  const list = S.statRows.filter((x) => x.trainer_id === p.id && localDate(x.starts_at).slice(0, 7) === cur).sort((a, b) => (a.starts_at < b.starts_at ? -1 : 1));
+  // 회원별 합계
+  const by = {};
+  for (const x of list) { const k = statKey(x, nowIso); by[x.member_id] = by[x.member_id] || { done: 0, noshow: 0, canceled: 0, unchecked: 0, left: 0 }; by[x.member_id][k]++; }
+  const mids = Object.keys(by).sort((a, b) => (by[b].done - by[a].done) || ((memberById(a) || {}).name || '').localeCompare((memberById(b) || {}).name || '', 'ko'));
+  const cell = (n, cls) => '<td class="r num' + (n && cls ? ' ' + cls : '') + '">' + (n || '<span class="muted">-</span>') + '</td>';
+  const summary = '<div class="hscroll"><table class="tbl"><thead><tr><th>회원</th><th class="r">출석</th><th class="r">노쇼</th><th class="r">취소</th><th class="r">처리 안 됨</th><th class="r">남은 예약</th></tr></thead><tbody>' +
+    (mids.length ? mids.map((id) => { const m = memberById(id); const c = by[id]; return '<tr><td><button type="button" class="link" style="color:inherit" data-act="openMember" data-id="' + id + '"><b>' + esc(m ? m.name : '(삭제된 회원)') + '</b></button></td>' + cell(c.done, 'b') + cell(c.noshow, 'danger-text') + cell(c.canceled) + cell(c.unchecked, 'danger-text') + cell(c.left) + '</tr>'; }).join('') : '<tr><td colspan="6" class="muted">이 달 수업이 없어요.</td></tr>') +
+    '</tbody></table></div>';
+  const chips = STAT_KINDS.map(([k, l]) => '<button type="button" class="chip' + (S.statKind === k ? ' on dark' : '') + '" data-act="statKind" data-v="' + k + '" aria-pressed="' + (S.statKind === k) + '">' + l + '</button>').join('');
+  const shown = list.filter((x) => S.statKind === 'all' || statKey(x, nowIso) === S.statKind);
+  const items = shown.length ? shown.map((x) => { const m = memberById(x.member_id); const k = statKey(x, nowIso); const d = localDate(x.starts_at);
+    return '<button type="button" class="list-row" data-act="gotoSession" data-id="' + x.id + '" data-d="' + d + '"><span class="t-time" style="width:130px">' + md(d) + '(' + DOW[dowOf(d)] + ') ' + localTime(x.starts_at) + '</span><span class="grow"><b>' + esc(m ? m.name : '(삭제된 회원)') + '</b></span><span class="pill ' + STAT_PILL[k][1] + '">' + STAT_PILL[k][0] + '</span></button>'; }).join('') : '<p class="muted small">해당하는 수업이 없어요.</p>';
+  return '<section class="card stack"><div class="row-between wrap gap8"><h3 class="h3" style="margin:0"><span class="dot" style="background:' + esc(p.color) + '"></span> ' + esc(p.name) + ' · ' + Number(cur.slice(5)) + '월 회원별</h3><button type="button" class="btn btn-sm" data-act="statOpen" data-v="' + p.id + '">접기</button></div>' + summary +
+    '<h4 class="h3 mt8" style="margin-bottom:0">날짜별 목록</h4><div class="row gap6 wrap">' + chips + '</div>' + items + '<p class="muted small">줄을 누르면 예약·출석 달력에서 그 수업이 열려요. 회원 이름을 누르면 회원 정보로 가요.</p></section>';
+}
+
 function statsView() {
   if (S.statRows == null) return '<p class="muted">불러오는 중…</p>';
   const months = statMonths();
@@ -834,14 +859,15 @@ function statsView() {
   const people = trainers().filter((p) => isAdmin() || p.id === S.me.id);
   const mk = (iso) => localDate(iso).slice(0, 7);
   const count = (pid, month, status) => S.statRows.filter((x) => x.trainer_id === pid && mk(x.starts_at) === month && (status === 'left' ? x.status === 'reserved' && x.starts_at >= nowIso : status === 'unchecked' ? x.status === 'reserved' && x.starts_at < nowIso : x.status === status)).length;
+  if (!isAdmin() && !S.statOpen) S.statOpen = S.me.id;
   const rows = people.map((p) => ({ p, done: count(p.id, cur, 'done'), noshow: count(p.id, cur, 'noshow'), canceled: count(p.id, cur, 'canceled'), left: count(p.id, cur, 'left'), unchecked: count(p.id, cur, 'unchecked') }))
     .filter((r) => isAdmin() ? (r.p.role === 'trainer' || r.done + r.noshow + r.canceled + r.left + r.unchecked > 0) : true);
   const tot = rows.reduce((a, r) => ({ done: a.done + r.done, noshow: a.noshow + r.noshow, canceled: a.canceled + r.canceled, left: a.left + r.left, unchecked: a.unchecked + r.unchecked }), { done: 0, noshow: 0, canceled: 0, left: 0, unchecked: 0 });
   const mLabel = (m) => Number(m.slice(5)) + '월';
   const curTable = '<section class="card"><h3 class="h3">' + cur.slice(0, 4) + '년 ' + mLabel(cur) + ' 강사별 수업</h3><div class="hscroll"><table class="tbl"><thead><tr><th>강사</th><th class="r">출석(수업한 횟수)</th><th class="r">노쇼</th><th class="r">취소</th><th class="r">출석 처리 안 됨</th><th class="r">남은 예약</th></tr></thead><tbody>' +
-    (rows.length ? rows.map((r) => '<tr><td><span class="dot" style="background:' + esc(r.p.color) + '"></span> <b>' + esc(r.p.name) + '</b></td><td class="r num"><b>' + r.done + '회</b></td><td class="r num">' + r.noshow + '</td><td class="r num">' + r.canceled + '</td><td class="r num' + (r.unchecked ? ' danger-text' : '') + '">' + r.unchecked + '</td><td class="r num">' + r.left + '</td></tr>').join('') : '<tr><td colspan="6" class="muted">강사가 없어요.</td></tr>') +
+    (rows.length ? rows.map((r) => '<tr class="' + (S.statOpen === r.p.id ? 'row-sel' : '') + '"><td><button type="button" class="link" style="color:inherit" data-act="statOpen" data-v="' + r.p.id + '" aria-expanded="' + (S.statOpen === r.p.id) + '"><span class="dot" style="background:' + esc(r.p.color) + '"></span> <b>' + esc(r.p.name) + '</b> <span class="muted small">' + (S.statOpen === r.p.id ? '▲ 접기' : '▼ 회원별 보기') + '</span></button></td><td class="r num"><b>' + r.done + '회</b></td><td class="r num">' + r.noshow + '</td><td class="r num">' + r.canceled + '</td><td class="r num' + (r.unchecked ? ' danger-text' : '') + '">' + r.unchecked + '</td><td class="r num">' + r.left + '</td></tr>').join('') : '<tr><td colspan="6" class="muted">강사가 없어요.</td></tr>') +
     (isAdmin() && rows.length > 1 ? '<tr><td><b>합계</b></td><td class="r num"><b>' + tot.done + '회</b></td><td class="r num">' + tot.noshow + '</td><td class="r num">' + tot.canceled + '</td><td class="r num">' + tot.unchecked + '</td><td class="r num">' + tot.left + '</td></tr>' : '') +
-    '</tbody></table></div><p class="muted small">출석 = 출석 처리된 수업 (수업료 계산 기준). "출석 처리 안 됨"은 시간이 지났는데 예약 상태로 남은 수업이에요.</p></section>';
+    '</tbody></table></div><p class="muted small">출석 = 출석 처리된 수업 (수업료 계산 기준). "출석 처리 안 됨"은 시간이 지났는데 예약 상태로 남은 수업이에요. 강사 이름을 누르면 회원별로 볼 수 있어요.</p></section>' + statDetailView(cur, nowIso);
   // 최근 6개월 출석 횟수
   const maxDone = Math.max(1, ...people.flatMap((p) => months.map((m) => count(p.id, m, 'done'))));
   const trend = '<section class="card"><h3 class="h3">최근 6개월 출석 횟수</h3><div class="hscroll"><table class="tbl"><thead><tr><th>강사</th>' + months.map((m) => '<th class="r">' + (m.slice(0, 4) !== cur.slice(0, 4) ? m.slice(2, 4) + '년 ' : '') + mLabel(m) + '</th>').join('') + '<th class="r">합계</th></tr></thead><tbody>' +
@@ -1421,6 +1447,8 @@ const actions = {
   },
 
   // 매출
+  statOpen: (d) => { S.statOpen = S.statOpen === d.v ? null : d.v; S.statKind = 'all'; render(); },
+  statKind: (d) => { S.statKind = d.v; render(); },
   statMove: (d) => run(async () => { S.statMonth = addMonths(S.statMonth + '-01', Number(d.v)).slice(0, 7); S.statRows = null; render(); await loadStats(); }),
   salesMove: (d) => run(async () => { S.salesMonth = addMonths(S.salesMonth + '-01', Number(d.v)).slice(0, 7); S.monthDone = null; render(); await loadMonthDone(); }),
   newPayment: () => { S.modal = { type: 'payment' }; render(); },

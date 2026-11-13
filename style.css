@@ -190,3 +190,4 @@ button.blk { pointer-events: auto; cursor: pointer; text-align: left; font: inhe
 .day-check input { width: 16px; min-height: 16px; }
 .tt-day { height: 44px; display: flex; align-items: center; justify-content: center; font-weight: 700; border-left: 1px solid var(--line2); }
 .mini-bar { height: 4px; background: #ECEBE6; border-radius: 2px; margin-bottom: 3px; overflow: hidden; } .mini-bar span { display: block; height: 100%; }
+.row-sel td { background: #EEF4F0; }
