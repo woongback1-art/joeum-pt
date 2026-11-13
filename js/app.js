@@ -83,6 +83,8 @@ const S = {
   jDate: null,
   jDetail: null,
   salesMonth: todayStr().slice(0, 7),
+  statMonth: todayStr().slice(0, 7),
+  statRows: null, // 최근 6개월 수업 (통계용)
   monthDone: null, // 이번 달 출석 처리된 수업 (수업료 계산용)
   openPost: null,
   modal: null,
@@ -304,13 +306,14 @@ const NAV = [
   { key: 'schedule', label: '예약·출석' },
   { key: 'members', label: '회원·수강권' },
   { key: 'journal', label: '수업일지' },
+  { key: 'stats', label: '월별 수업 현황', trainerLabel: '내 수업 현황' },
   { key: 'sales', label: '매출·결제', trainerLabel: '내 매출' },
   { key: 'board', label: '공지·매뉴얼·할 일' },
   { key: 'blocks', label: '고정 스케줄' },
   { key: 'staff', label: '직원 관리', adminOnly: true },
   { key: 'myinfo', label: '내 정보' },
 ];
-const TITLES = { blocks: '개인 고정 스케줄', home: '오늘의 센터', schedule: '예약·출석', members: '회원·수강권', journal: '수업일지', sales: '매출·결제', board: '공지·매뉴얼·할 일', staff: '직원 관리', myinfo: '내 정보' };
+const TITLES = { stats: '월별 수업 현황', blocks: '개인 고정 스케줄', home: '오늘의 센터', schedule: '예약·출석', members: '회원·수강권', journal: '수업일지', sales: '매출·결제', board: '공지·매뉴얼·할 일', staff: '직원 관리', myinfo: '내 정보' };
 
 function layoutView() {
   const today = todayStr();
@@ -325,7 +328,7 @@ function layoutView() {
     const label = !isAdmin() && n.trainerLabel ? n.trainerLabel : n.label;
     return '<button type="button" class="nav-item' + (S.screen === n.key ? ' on' : '') + '" data-act="go" data-v="' + n.key + '"' + (S.screen === n.key ? ' aria-current="page"' : '') + '><span>' + esc(label) + '</span>' + (badge ? '<span class="badge">' + badge + '</span>' : '') + '</button>';
   }).join('');
-  const title = S.screen === 'sales' && !isAdmin() ? '내 매출' : TITLES[S.screen];
+  const title = S.screen === 'sales' && !isAdmin() ? '내 매출' : S.screen === 'stats' && !isAdmin() ? '내 수업 현황' : TITLES[S.screen];
   return '<div class="shell">' +
     '<nav class="side" aria-label="주 메뉴">' +
       '<div class="brand"><div class="brand-name">' + esc(CENTER_NAME) + '</div><div class="brand-sub">통합 관리' + (api.mode === 'demo' ? ' · <b class="demo-tag">체험 모드</b>' : '') + '</div></div>' +
@@ -349,6 +352,7 @@ function screenView() {
     case 'schedule': return scheduleView();
     case 'members': return membersView();
     case 'journal': return journalListView();
+    case 'stats': return statsView();
     case 'sales': return salesView();
     case 'board': return boardView();
     case 'staff': return isAdmin() ? staffView() : '';
@@ -814,6 +818,40 @@ function payView() {
     '</tbody></table></div>' + (() => { const n = S.unchecked.filter((s) => (isAdmin() || s.trainer_id === S.me.id) && s.starts_at.slice(0, 7) <= S.salesMonth).length; return n ? '<p class="form-err">출석 처리 안 된 지난 수업이 ' + n + '건 있어요. 대시보드에서 출석 처리하면 수업료에 들어가요.</p>' : ''; })() + '<p class="muted small">실지급액 = 수업 횟수 × 단가 − 3.3%(소득세 3% + 지방소득세 0.3%, 10원 미만 버림, 공제 적용한 강사만). 노쇼·취소 수업은 빠져요.' + (isAdmin() ? ' 단가와 3.3% 공제 여부는 직원 관리에서 강사마다 정해요.' : '') + '</p></section>';
 }
 
+// ---------- 월별 수업 현황 ----------
+function statMonths() { const out = []; for (let i = 5; i >= 0; i--) out.push(addMonths(S.statMonth + '-01', -i).slice(0, 7)); return out; }
+async function loadStats() {
+  const months = statMonths();
+  const from = new Date(months[0] + '-01T00:00:00').toISOString();
+  const to = new Date(addMonths(S.statMonth + '-01', 1) + 'T00:00:00').toISOString();
+  S.statRows = await api.select('sessions', { select: 'id,trainer_id,starts_at,status', filters: [['starts_at', 'gte', from], ['starts_at', 'lt', to]], order: 'starts_at.asc', limit: 20000 });
+}
+function statsView() {
+  if (S.statRows == null) return '<p class="muted">불러오는 중…</p>';
+  const months = statMonths();
+  const cur = S.statMonth;
+  const nowIso = new Date().toISOString();
+  const people = trainers().filter((p) => isAdmin() || p.id === S.me.id);
+  const mk = (iso) => localDate(iso).slice(0, 7);
+  const count = (pid, month, status) => S.statRows.filter((x) => x.trainer_id === pid && mk(x.starts_at) === month && (status === 'left' ? x.status === 'reserved' && x.starts_at >= nowIso : status === 'unchecked' ? x.status === 'reserved' && x.starts_at < nowIso : x.status === status)).length;
+  const rows = people.map((p) => ({ p, done: count(p.id, cur, 'done'), noshow: count(p.id, cur, 'noshow'), canceled: count(p.id, cur, 'canceled'), left: count(p.id, cur, 'left'), unchecked: count(p.id, cur, 'unchecked') }))
+    .filter((r) => isAdmin() ? (r.p.role === 'trainer' || r.done + r.noshow + r.canceled + r.left + r.unchecked > 0) : true);
+  const tot = rows.reduce((a, r) => ({ done: a.done + r.done, noshow: a.noshow + r.noshow, canceled: a.canceled + r.canceled, left: a.left + r.left, unchecked: a.unchecked + r.unchecked }), { done: 0, noshow: 0, canceled: 0, left: 0, unchecked: 0 });
+  const mLabel = (m) => Number(m.slice(5)) + '월';
+  const curTable = '<section class="card"><h3 class="h3">' + cur.slice(0, 4) + '년 ' + mLabel(cur) + ' 강사별 수업</h3><div class="hscroll"><table class="tbl"><thead><tr><th>강사</th><th class="r">출석(수업한 횟수)</th><th class="r">노쇼</th><th class="r">취소</th><th class="r">출석 처리 안 됨</th><th class="r">남은 예약</th></tr></thead><tbody>' +
+    (rows.length ? rows.map((r) => '<tr><td><span class="dot" style="background:' + esc(r.p.color) + '"></span> <b>' + esc(r.p.name) + '</b></td><td class="r num"><b>' + r.done + '회</b></td><td class="r num">' + r.noshow + '</td><td class="r num">' + r.canceled + '</td><td class="r num' + (r.unchecked ? ' danger-text' : '') + '">' + r.unchecked + '</td><td class="r num">' + r.left + '</td></tr>').join('') : '<tr><td colspan="6" class="muted">강사가 없어요.</td></tr>') +
+    (isAdmin() && rows.length > 1 ? '<tr><td><b>합계</b></td><td class="r num"><b>' + tot.done + '회</b></td><td class="r num">' + tot.noshow + '</td><td class="r num">' + tot.canceled + '</td><td class="r num">' + tot.unchecked + '</td><td class="r num">' + tot.left + '</td></tr>' : '') +
+    '</tbody></table></div><p class="muted small">출석 = 출석 처리된 수업 (수업료 계산 기준). "출석 처리 안 됨"은 시간이 지났는데 예약 상태로 남은 수업이에요.</p></section>';
+  // 최근 6개월 출석 횟수
+  const maxDone = Math.max(1, ...people.flatMap((p) => months.map((m) => count(p.id, m, 'done'))));
+  const trend = '<section class="card"><h3 class="h3">최근 6개월 출석 횟수</h3><div class="hscroll"><table class="tbl"><thead><tr><th>강사</th>' + months.map((m) => '<th class="r">' + (m.slice(0, 4) !== cur.slice(0, 4) ? m.slice(2, 4) + '년 ' : '') + mLabel(m) + '</th>').join('') + '<th class="r">합계</th></tr></thead><tbody>' +
+    people.map((p) => { const vals = months.map((m) => count(p.id, m, 'done')); return '<tr><td><b>' + esc(p.name) + '</b></td>' + vals.map((v, i) => '<td class="r num' + (months[i] === cur ? ' b' : '') + '"><div class="mini-bar"><span style="width:' + Math.round(v / maxDone * 100) + '%;background:' + esc(p.color) + '"></span></div>' + v + '</td>').join('') + '<td class="r num"><b>' + vals.reduce((a, b) => a + b, 0) + '</b></td></tr>'; }).join('') +
+    '</tbody></table></div></section>';
+  return '<div class="stack16"><div class="row gap8 wrap"><button type="button" class="btn icon" data-act="statMove" data-v="-1" aria-label="이전 달">‹</button><h2 class="h2">' + cur.slice(0, 4) + '년 ' + mLabel(cur) + '</h2><button type="button" class="btn icon" data-act="statMove" data-v="1" aria-label="다음 달">›</button></div>' +
+    '<div class="kpis"><div class="card kpi"><div class="muted small">' + (isAdmin() ? '전체 출석' : '내 출석') + '</div><div class="kpi-v">' + tot.done + '회</div></div><div class="card kpi"><div class="muted small">노쇼</div><div class="kpi-v">' + tot.noshow + '회</div></div><div class="card kpi"><div class="muted small">취소</div><div class="kpi-v">' + tot.canceled + '회</div></div><div class="card kpi"><div class="muted small">남은 예약</div><div class="kpi-v">' + tot.left + '회</div></div></div>' +
+    curTable + trend + '</div>';
+}
+
 // ---------- 매출 ----------
 function salesView() {
   const month = S.salesMonth;
@@ -1138,6 +1176,7 @@ async function goScreen(screen) {
   render();
   if (screen === 'journal') { S.journals = null; render(); await loadJournals(); }
   if (screen === 'sales') { S.monthDone = null; render(); await loadMonthDone(); }
+  if (screen === 'stats') { S.statRows = null; render(); await loadStats(); }
   if (screen === 'schedule') await loadSessions();
   if (screen === 'members' && S.memberId) await loadMemberDetail(S.memberId);
   render();
@@ -1175,7 +1214,7 @@ const actions = {
   demoReset: () => { api.reset(); toast('체험 데이터를 처음 상태로 돌렸어요.'); },
   logout: () => run(async () => { await api.signOut(); location.reload(); }),
   reloadMe: () => run(async () => { await enterApp(); if (S.me && S.me.role === 'pending') toast('아직 승인 전이에요.'); }),
-  refresh: () => run(async () => { await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
+  refresh: () => run(async () => { await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.screen === 'stats') await loadStats(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
   go: (d) => goScreen(d.v),
 
   // 달력
@@ -1382,6 +1421,7 @@ const actions = {
   },
 
   // 매출
+  statMove: (d) => run(async () => { S.statMonth = addMonths(S.statMonth + '-01', Number(d.v)).slice(0, 7); S.statRows = null; render(); await loadStats(); }),
   salesMove: (d) => run(async () => { S.salesMonth = addMonths(S.salesMonth + '-01', Number(d.v)).slice(0, 7); S.monthDone = null; render(); await loadMonthDone(); }),
   newPayment: () => { S.modal = { type: 'payment' }; render(); },
   editPayment: (d) => { S.modal = { type: 'payment', payment: S.payments.find((p) => p.id === d.id) }; render(); },
