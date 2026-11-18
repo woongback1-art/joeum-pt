@@ -449,7 +449,34 @@ function scheduleView() {
   return '<div class="stack16">' + toolbar + '<div class="sched"><section class="card cal" aria-label="달력">' + cal + '</section><aside class="side-panel">' + sidePanel() + '</aside></div></div>';
 }
 
+// 같은 시간대에 겹치는 일정은 옆으로 나란히 (칸 나누기)
+function layoutLanes(evs) {
+  const items = evs.map((s) => { const st = minutesOf(s.starts_at); return { id: s.id, st, en: st + Math.max(30, s.duration_min || 60) }; }).sort((a, b) => a.st - b.st || a.en - b.en);
+  const out = {};
+  let group = [], groupEnd = -1;
+  const flush = () => {
+    const laneEnds = [];
+    for (const it of group) {
+      let i = laneEnds.findIndex((e) => e <= it.st);
+      if (i < 0) { i = laneEnds.length; laneEnds.push(0); }
+      laneEnds[i] = it.en;
+      out[it.id] = { i, n: 0 };
+    }
+    for (const it of group) out[it.id].n = laneEnds.length;
+    group = [];
+  };
+  for (const it of items) {
+    if (group.length && it.st >= groupEnd) flush();
+    group.push(it);
+    groupEnd = Math.max(groupEnd, it.en);
+  }
+  if (group.length) flush();
+  return out;
+}
+
 function weekView(ws) {
+  let maxLanes = 1;
+  const dayLanes = [];
   const today = todayStr();
   const vis = visibleSessions();
   let head = '<div class="wk-head"><div></div>';
@@ -473,12 +500,22 @@ function weekView(ws) {
       const h = Math.max(20, (timeMin(b.end_time) - timeMin(b.start_time)) / 60 * HOUR_PX);
       inner += '<button type="button" class="blk" data-act="blockBook" data-id="' + b.id + '" data-d="' + d + '" style="top:' + top + 'px;height:' + h + 'px;border-color:' + esc(staffColor(b.owner_id)) + '" title="눌러서 예약으로 넣기 · ' + esc(staffName(b.owner_id) + ' · ' + b.title) + '" aria-label="' + esc(b.title + ' ' + hm(b.start_time) + ' 고정 스케줄, 눌러서 예약으로 넣기') + '"><b>' + esc(b.title) + '</b><span>' + esc(staffName(b.owner_id)) + ' · ' + hm(b.start_time) + '–' + hm(b.end_time) + '</span></button>';
     }
+    const lanes = layoutLanes(evs);
+    let dl = 1; for (const k in lanes) dl = Math.max(dl, lanes[k].n);
+    dayLanes.push(dl); maxLanes = Math.max(maxLanes, dl);
     for (const s of evs) {
       const top = (minutesOf(s.starts_at) - CAL_START * 60) / 60 * HOUR_PX + 2;
       const h = Math.max(28, (s.duration_min || 60) / 60 * HOUR_PX - 4);
       const m = memberById(s.member_id);
       const tag = s.status === 'done' ? ' · 출석' : s.status === 'noshow' ? ' · 노쇼' : s.status === 'canceled' ? ' · 취소' : '';
-      inner += '<button type="button" class="ev" data-act="openSession" data-id="' + s.id + '" style="top:' + top + 'px;height:' + h + 'px;' + sessionBlockStyle(s, s.id === S.selSessionId) + '"><b' + (s.status === 'canceled' ? ' class="strike"' : '') + '>' + localTime(s.starts_at) + ' ' + esc(m ? m.name : '?') + '</b><span>' + esc(staffName(s.trainer_id)) + tag + '</span></button>';
+      const L = lanes[s.id];
+      const w = 100 / L.n;
+      const pos = 'left:calc(' + (L.i * w) + '% + 2px);width:calc(' + w + '% - 4px);right:auto;';
+      const narrow = L.n > 1;
+      inner += '<button type="button" class="ev' + (narrow ? ' ev-narrow' : '') + '" data-act="openSession" data-id="' + s.id + '" title="' + esc(localTime(s.starts_at) + ' ' + (m ? m.name : '?') + ' · ' + staffName(s.trainer_id) + tag) + '" style="top:' + top + 'px;height:' + h + 'px;' + pos + sessionBlockStyle(s, s.id === S.selSessionId) + '">' +
+        (narrow
+          ? '<b' + (s.status === 'canceled' ? ' class="strike"' : '') + '>' + esc(m ? m.name : '?') + '</b><span>' + localTime(s.starts_at) + '</span><span>' + esc(staffName(s.trainer_id)) + tag + '</span>'
+          : '<b' + (s.status === 'canceled' ? ' class="strike"' : '') + '>' + localTime(s.starts_at) + ' ' + esc(m ? m.name : '?') + '</b><span>' + esc(staffName(s.trainer_id)) + tag + '</span>') + '</button>';
     }
     cols += '<div class="wk-col' + (d === S.calDate ? ' sel' : '') + '" style="height:' + ((CAL_END - CAL_START) * HOUR_PX) + 'px">' + inner + '</div>';
   }
@@ -486,7 +523,11 @@ function weekView(ws) {
   let hours = '<div class="wk-hours">';
   for (let h = CAL_START; h < CAL_END; h++) hours += '<div class="hour">' + pad(h) + ':00</div>';
   hours += '</div>';
-  return '<div class="hscroll"><div class="wk">' + head + '<div class="wk-body" data-scroll-key="wk">' + hours + cols + '</div></div></div>';
+  // 겹치는 일정이 있는 날만 칸을 넓게
+  const mins = dayLanes.map((n) => (n > 1 ? n * 66 : 96));
+  const tpl = 'grid-template-columns:52px ' + dayLanes.map((n, i) => 'minmax(' + mins[i] + 'px,' + n + 'fr)').join(' ') + ';';
+  head = head.replace('<div class="wk-head">', '<div class="wk-head" style="' + tpl + '">');
+  return '<div class="hscroll"><div class="wk" style="min-width:' + Math.max(760, 52 + mins.reduce((a, b) => a + b, 0)) + 'px">' + head + '<div class="wk-body" data-scroll-key="wk" style="' + tpl + '">' + hours + cols + '</div></div></div>';
 }
 
 function monthView() {
@@ -1188,9 +1229,25 @@ async function refreshAfterSessionChange() {
   if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId);
 }
 
+// 수업 시간이 끝난 예약은 자동으로 출석 처리 (노쇼였다면 직접 노쇼로 바꾸기)
+async function autoCheckIn() {
+  const now = Date.now();
+  const list = await api.select('sessions', {
+    select: 'id,starts_at,duration_min,status',
+    filters: [['status', 'eq', 'reserved'], ['starts_at', 'lt', new Date(now).toISOString()], ['starts_at', 'gte', new Date(now - 60 * 864e5).toISOString()]],
+  });
+  const ended = list.filter((x) => Date.parse(x.starts_at) + (x.duration_min || 60) * 60e3 <= now);
+  let n = 0;
+  for (const x of ended) { try { await api.update('sessions', x.id, { status: 'done' }); n++; } catch (e) { console.warn(e); } }
+  return n;
+}
+
 async function enterApp() {
   await loadMe();
   if (S.me && S.me.role !== 'pending') {
+    let auto = 0;
+    try { auto = await autoCheckIn(); } catch (e) { console.warn(e); }
+    if (auto) setTimeout(() => toast('수업 시간이 지난 예약 ' + auto + '건을 출석으로 바꿨어요. 노쇼였다면 일정을 눌러 노쇼로 바꿔 주세요.'), 300);
     await loadCore();
     await Promise.all([loadToday(), loadSessions(true)]);
   }
@@ -1240,7 +1297,7 @@ const actions = {
   demoReset: () => { api.reset(); toast('체험 데이터를 처음 상태로 돌렸어요.'); },
   logout: () => run(async () => { await api.signOut(); location.reload(); }),
   reloadMe: () => run(async () => { await enterApp(); if (S.me && S.me.role === 'pending') toast('아직 승인 전이에요.'); }),
-  refresh: () => run(async () => { await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.screen === 'stats') await loadStats(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
+  refresh: () => run(async () => { const auto = await autoCheckIn().catch(() => 0); if (auto) setTimeout(() => toast('지난 예약 ' + auto + '건을 출석으로 바꿨어요.'), 3200); await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.screen === 'stats') await loadStats(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
   go: (d) => goScreen(d.v),
 
   // 달력
@@ -1662,3 +1719,12 @@ document.addEventListener('keydown', (ev) => {
 
 // 테스트용
 window.__joeum = { S, api, render: renderNow };
+
+// 화면을 켜 둔 채로 있어도 5분마다 끝난 수업을 출석으로
+setInterval(async () => {
+  if (!S.me || S.me.role === 'pending' || S.busy || S.shared) return;
+  try {
+    const n = await autoCheckIn();
+    if (n) { await refreshAfterSessionChange(); if (S.screen === 'sales') await loadMonthDone(); if (S.screen === 'stats') await loadStats(); render(); }
+  } catch (e) { console.warn(e); }
+}, 5 * 60 * 1000);
