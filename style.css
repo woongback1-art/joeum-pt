@@ -192,3 +192,7 @@ button.blk { pointer-events: auto; cursor: pointer; text-align: left; font: inhe
 .mini-bar { height: 4px; background: #ECEBE6; border-radius: 2px; margin-bottom: 3px; overflow: hidden; } .mini-bar span { display: block; height: 100%; }
 .row-sel td { background: #EEF4F0; }
 .ev.ev-narrow { padding: 2px 4px; font-size: 10.5px; } .ev.ev-narrow b { font-size: 11px; }
+
+/* 운동 숙제 화면 자리 (iframe이 이 위에 겹쳐짐) */
+.hw-slot { width: 100%; height: calc(100vh - 150px); min-height: 560px; border-radius: 14px; }
+@media (max-width: 760px) { .hw-slot { height: calc(100vh - 110px); } }

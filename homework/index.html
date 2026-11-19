@@ -135,6 +135,10 @@ table.g th.today{color:var(--accent);font-weight:800}
 .c{display:inline-block;width:20px;height:20px;border-radius:6px;line-height:20px;font-weight:800}
 .c.y{background:var(--ok);color:#fff} .c.n{background:var(--none)} .c.p{border:1.5px dashed var(--line);background:transparent} .c.x{color:#D5D0C6}
 .login{max-width:360px;margin:12vh auto 0}
+html.embed body{background:transparent}
+html.embed .wrap{max-width:none;padding:0 2px 40px}
+html.embed .banner, html.embed .home-head{display:none}
+html.embed .back{margin-top:0}
 .spec{display:inline-block;margin-top:4px;font-weight:700;color:var(--accent-ink);font-size:15px}
 .hw.on .spec{color:#14583A}
 .note{display:block;margin-top:4px;color:var(--sub);font-size:13.5px}
@@ -174,6 +178,9 @@ const CONFIG = {
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZHBtcHV2enZhaGluYmdua3NhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQzMjk3NTUsImV4cCI6MjEwOTkwNTc1NX0.2Lkj0hr3llBekAuwoDc2Ox-3EaJhgxDsa_UFO9XLpjs",
   CENTER_NAME: "좋음PT",
 };
+
+const EMBED = new URLSearchParams(location.search).has("embed");
+if (EMBED) document.documentElement.classList.add("embed");
 
 /* ---------- 공통 유틸 ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -321,18 +328,25 @@ function demoBackend() {
    ========================================================= */
 async function supabaseBackend() {
   const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
-  const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  // 좋음PT 센터 관리 화면 안에 들어가 있을 때는 그쪽 로그인을 그대로 씀
+  const host = EMBED && window.parent !== window && window.parent.joeumToken ? window.parent : null;
+  const sb = host
+    ? createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { accessToken: async () => (await host.joeumToken()) || CONFIG.SUPABASE_ANON_KEY })
+    : createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
   const ok = ({ data, error }) => { if (error) throw error; return data; };
   return {
     mode: "live",
-    async session() { const { data } = await sb.auth.getSession(); return data.session?.user || null; },
+    async session() {
+      if (host) return (await host.joeumToken()) ? host.joeumUser() : null;
+      const { data } = await sb.auth.getSession(); return data.session?.user || null;
+    },
     async me() {
       const u = await this.session(); if (!u) return null;
       const { data } = await sb.from("profiles").select("id,name,role").eq("id", u.id).maybeSingle();
       return data || { id: u.id, name: u.email, role: null };
     },
     async signIn(email, password) { ok(await sb.auth.signInWithPassword({ email, password })); },
-    async signOut() { await sb.auth.signOut(); },
+    async signOut() { if (!host) await sb.auth.signOut(); },
     // 회원 목록은 센터 통합 관리(joeum-pt)의 members 테이블을 그대로 사용
     async listMembers() {
       const rows = ok(await sb.from("members").select("id,name,memo,goal,trainer_id,hw_token,created_at").order("name"));
@@ -466,6 +480,7 @@ async function MemberView(token) {
    트레이너 화면
    ========================================================= */
 function LoginView() {
+  if (EMBED) { app.innerHTML = errorBox("로그인이 풀렸어요.<br>센터 관리 화면에서 다시 로그인해주세요."); return; }
   app.innerHTML = `
     <div class="login card stack">
       <div class="m-brand">${esc(CONFIG.CENTER_NAME)}</div>
@@ -552,7 +567,7 @@ async function TrainerView() {
 
     app.innerHTML = `
       ${api.mode === "demo" ? `<div class="banner">체험 모드예요 — 데이터가 이 브라우저에만 저장돼요. 주소 끝의 ?demo 를 지우면 실제 센터 데이터로 열려요.</div>` : ""}
-      <div class="t-head">
+      <div class="t-head home-head">
         <div><div class="m-brand">${esc(CONFIG.CENTER_NAME)}</div><h1>운동 숙제 체크</h1><div class="muted small">${fmtDate(t)}</div></div>
         <div class="row">
           <button class="btn ghost" id="reload">새로고침</button>
@@ -785,6 +800,7 @@ ${(() => { const j = judge(r.member_id, r.report_date); return `
     });
   }
 
+  window.hwRefresh = refresh;   // 센터 관리 화면의 '새로고침' 버튼에서 호출
   app.innerHTML = loading();
   await refresh();
   // 1분마다 자동 새로고침 (대시보드에서 입력 중이 아닐 때만)

@@ -160,9 +160,45 @@ function renderNow() {
   $app.innerHTML = view();
   document.querySelectorAll('[data-scroll-key]').forEach((el) => { if (scrollers[el.dataset.scrollKey] != null) el.scrollTop = scrollers[el.dataset.scrollKey]; });
   window.scrollTo(0, winY);
+  syncHomeworkFrame();
   if (focusId) {
     const el = document.getElementById(focusId);
     if (el) { el.focus(); if (sel && el.setSelectionRange) { try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { /* */ } } }
+  }
+}
+
+// ---------- 운동 숙제 (homework/ 페이지를 화면 안에 띄움) ----------
+// 화면을 다시 그릴 때마다 iframe이 새로 고쳐지지 않도록, iframe은 한 번만 만들고
+// 자리(#hw-slot) 위에 겹쳐서 위치만 맞춰요.
+let hwFrame = null, hwObserver = null;
+window.joeumToken = async () => {
+  if (!api.session) return null;
+  if (api._ensureFresh) await api._ensureFresh();
+  return api.session ? api.session.access_token : null;
+};
+window.joeumUser = () => (api.session && api.session.user) || null;
+function syncHomeworkFrame() {
+  const slot = document.getElementById('hw-slot');
+  if (!slot) { if (hwFrame) hwFrame.style.display = 'none'; return; }
+  if (!hwFrame) {
+    hwFrame = document.createElement('iframe');
+    hwFrame.src = './homework/?embed=1' + (api.mode === 'demo' ? '&demo' : '');
+    hwFrame.title = '운동 숙제';
+    hwFrame.setAttribute('allow', 'clipboard-write');
+    hwFrame.style.cssText = 'position:absolute;border:0;background:transparent;z-index:5;display:none';
+    document.body.appendChild(hwFrame);
+    window.addEventListener('resize', syncHomeworkFrame);
+  }
+  placeHomeworkFrame(slot);
+  return;
+}
+function placeHomeworkFrame(slot) {
+  if (!hwFrame) return;
+  const r = slot.getBoundingClientRect();
+  Object.assign(hwFrame.style, { display: 'block', top: (r.top + window.scrollY) + 'px', left: (r.left + window.scrollX) + 'px', width: r.width + 'px', height: r.height + 'px' });
+  if (window.ResizeObserver && hwObserver !== slot) {
+    hwObserver = slot;
+    new ResizeObserver(() => { if (document.getElementById('hw-slot') === slot) placeHomeworkFrame(slot); }).observe(slot);
   }
 }
 
@@ -308,6 +344,7 @@ const NAV = [
   { key: 'schedule', label: '예약·출석' },
   { key: 'members', label: '회원·수강권' },
   { key: 'journal', label: '수업일지' },
+  { key: 'homework', label: '운동 숙제' },
   { key: 'stats', label: '월별 수업 현황', trainerLabel: '내 수업 현황' },
   { key: 'sales', label: '매출·결제', trainerLabel: '내 매출' },
   { key: 'board', label: '공지·매뉴얼·할 일' },
@@ -315,7 +352,7 @@ const NAV = [
   { key: 'staff', label: '직원 관리', adminOnly: true },
   { key: 'myinfo', label: '내 정보' },
 ];
-const TITLES = { stats: '월별 수업 현황', blocks: '개인 고정 스케줄', home: '오늘의 센터', schedule: '예약·출석', members: '회원·수강권', journal: '수업일지', sales: '매출·결제', board: '공지·매뉴얼·할 일', staff: '직원 관리', myinfo: '내 정보' };
+const TITLES = { homework: '운동 숙제', stats: '월별 수업 현황', blocks: '개인 고정 스케줄', home: '오늘의 센터', schedule: '예약·출석', members: '회원·수강권', journal: '수업일지', sales: '매출·결제', board: '공지·매뉴얼·할 일', staff: '직원 관리', myinfo: '내 정보' };
 
 function layoutView() {
   const today = todayStr();
@@ -360,6 +397,7 @@ function screenView() {
     case 'staff': return isAdmin() ? staffView() : '';
     case 'myinfo': return myInfoView();
     case 'blocks': return blocksView();
+    case 'homework': return '<div id="hw-slot" class="hw-slot"></div>';
     default: return homeView();
   }
 }
@@ -1297,7 +1335,7 @@ const actions = {
   demoReset: () => { api.reset(); toast('체험 데이터를 처음 상태로 돌렸어요.'); },
   logout: () => run(async () => { await api.signOut(); location.reload(); }),
   reloadMe: () => run(async () => { await enterApp(); if (S.me && S.me.role === 'pending') toast('아직 승인 전이에요.'); }),
-  refresh: () => run(async () => { const auto = await autoCheckIn().catch(() => 0); if (auto) setTimeout(() => toast('지난 예약 ' + auto + '건을 출석으로 바꿨어요.'), 3200); await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.screen === 'stats') await loadStats(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
+  refresh: () => run(async () => { const auto = await autoCheckIn().catch(() => 0); if (auto) setTimeout(() => toast('지난 예약 ' + auto + '건을 출석으로 바꿨어요.'), 3200); await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.screen === 'stats') await loadStats(); if (S.screen === 'homework' && hwFrame && hwFrame.contentWindow && hwFrame.contentWindow.hwRefresh) await hwFrame.contentWindow.hwRefresh(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
   go: (d) => goScreen(d.v),
 
   // 달력
