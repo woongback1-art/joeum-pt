@@ -92,7 +92,7 @@ textarea.field{resize:vertical;min-height:80px}
 .stat span{font-size:13px;color:var(--sub)}
 .stat.ok b{color:var(--ok)} .stat.warn b{color:var(--accent)}
 .grid2{display:grid;grid-template-columns:1fr;gap:18px}
-@media(min-width:860px){.grid2{grid-template-columns:1.6fr 1fr}}
+@media(min-width:860px){.grid2{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}}
 .sec-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .mrow{display:grid;grid-template-columns:1fr auto;gap:6px 12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:8px;transition:border-color .15s}
 .mrow:hover{border-color:#CFCAC0}
@@ -128,6 +128,21 @@ table.g th.today{color:var(--accent);font-weight:800}
 .c{display:inline-block;width:20px;height:20px;border-radius:6px;line-height:20px;font-weight:800}
 .c.y{background:var(--ok);color:#fff} .c.n{background:var(--none)} .c.p{border:1.5px dashed var(--line);background:transparent} .c.x{color:#D5D0C6}
 .login{max-width:360px;margin:12vh auto 0}
+.spec{display:inline-block;margin-top:4px;font-weight:700;color:var(--accent-ink);font-size:15px}
+.hw.on .spec{color:#14583A}
+.note{display:block;margin-top:4px;color:var(--sub);font-size:13.5px}
+.lbl{font-size:13px;color:var(--sub);font-weight:600;margin-bottom:6px}
+.num-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.stepper{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.stepper button{width:44px;height:46px;font-size:22px;font-weight:600;color:var(--sub);flex:none}
+.stepper button:active{background:var(--bg)}
+.stepper input{flex:1;min-width:0;border:0;text-align:center;font-size:20px;font-weight:800;outline:none;height:46px;background:transparent}
+.unit{display:flex;gap:4px;margin-top:6px}
+.unit button{flex:1;padding:6px 0;border-radius:8px;border:1px solid var(--line);font-size:13px;font-weight:600;background:#fff}
+.unit button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.quick button{padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:12.5px;color:var(--sub)}
+.quick button:active{background:var(--accent-soft)}
 </style>
 </head>
 <body>
@@ -160,6 +175,7 @@ const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const fmtDate = s => { const d = parseYmd(s); return `${d.getMonth() + 1}월 ${d.getDate()}일 (${DOW[d.getDay()]})`; };
 const relDay = s => { const n = Math.round((parseYmd(today()) - parseYmd(s)) / 86400000); return n === 0 ? "오늘" : n === 1 ? "어제" : `${n}일 전`; };
 const daysLabel = days => !days || !days.length ? "매일" : WEEK_ORDER.filter(d => days.includes(d)).map(d => DOW[d]).join("·");
+const hwSpec = h => [h.sets ? `${h.sets}세트` : "", h.reps ? `${h.reps}${h.unit || "회"}` : ""].filter(Boolean).join(" × ");
 const FEEL = [null,
   { e: "😫", t: "힘들어요" }, { e: "😕", t: "조금 힘듦" }, { e: "🙂", t: "보통" },
   { e: "😊", t: "좋아요" }, { e: "💪", t: "최고!" }];
@@ -205,7 +221,7 @@ function streak(hws, logSet) {
    데이터 저장소 1) 체험 모드 — 이 브라우저(localStorage)에만 저장
    ========================================================= */
 function demoBackend() {
-  const KEY = "hw_demo_v2"; let mem = null;
+  const KEY = "hw_demo_v3"; let mem = null;
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) {} };
   const db = () => {
     // 매번 저장소에서 다시 읽기 (같은 기기의 다른 탭에서 회원 화면을 체크한 내용도 보이도록)
@@ -216,8 +232,8 @@ function demoBackend() {
   function seed() {
     const created = addDays(new Date(), -10).toISOString();
     const m = { id: uid(), name: "김예시 (샘플)", memo: "허리 통증 · 주 2회 PT", token: randTok(), active: true, created_at: created };
-    const hs = [["버드독", "좌우 10회 × 3세트", []], ["글루트 브릿지", "15회 × 3세트", [1, 3, 5]], ["폼롤러 흉추 스트레칭", "2분", []]]
-      .map(([title, detail, days], i) => ({ id: uid(), member_id: m.id, title, detail, days, sort: i, active: true, created_at: created }));
+    const hs = [["버드독", 3, 10, "회", "좌우 번갈아, 허리 꺾지 않기", []], ["글루트 브릿지", 3, 15, "회", "엉덩이에 힘 주고 2초 멈추기", [1, 3, 5]], ["폼롤러 흉추 스트레칭", 1, 2, "분", "", []]]
+      .map(([title, sets, reps, unit, note, days], i) => ({ id: uid(), member_id: m.id, title, detail: "", sets, reps, unit, note, days, sort: i, active: true, created_at: created }));
     const logs = [], reports = [];
     for (let i = 1; i <= 6; i++) {
       const ds = ymd(addDays(new Date(), -i));
@@ -249,8 +265,8 @@ function demoBackend() {
       save();
     },
     async listHomeworks() { return db().homeworks.filter(h => h.active); },
-    async addHomework(member_id, { title, detail, days, sort }) {
-      const h = { id: uid(), member_id, title, detail, days, sort, active: true, created_at: new Date().toISOString() };
+    async addHomework(member_id, { title, sets, reps, unit, note, days, sort }) {
+      const h = { id: uid(), member_id, title, detail: "", sets, reps, unit, note, days, sort, active: true, created_at: new Date().toISOString() };
       db().homeworks.push(h); save(); return h;
     },
     async deleteHomework(id) { db().homeworks.find(h => h.id === id).active = false; save(); },
@@ -306,7 +322,7 @@ async function supabaseBackend() {
       return rows.map(m => ({ ...m, token: m.hw_token }));
     },
     async listHomeworks() { return ok(await sb.from("hw_homeworks").select("*").eq("active", true).order("sort").order("created_at")); },
-    async addHomework(member_id, { title, detail, days, sort }) { return ok(await sb.from("hw_homeworks").insert({ member_id, title, detail, days, sort }).select().single()); },
+    async addHomework(member_id, { title, sets, reps, unit, note, days, sort }) { return ok(await sb.from("hw_homeworks").insert({ member_id, title, sets, reps, unit, note, days, sort }).select().single()); },
     async deleteHomework(id) { ok(await sb.from("hw_homeworks").update({ active: false }).eq("id", id)); },
     async listLogs(from) { return ok(await sb.from("hw_logs").select("*").gte("done_date", from)); },
     async listReports(from) { return ok(await sb.from("hw_reports").select("*").gte("report_date", from)); },
@@ -371,7 +387,7 @@ async function MemberView(token) {
           const on = logSet.has(h.id + "|" + st.day);
           return `<button class="hw ${on ? "on" : ""}" data-hw="${h.id}" aria-pressed="${on}">
             <span class="chk">${on ? "✓" : ""}</span>
-            <span><b>${esc(h.title)}</b>${h.detail ? `<small>${esc(h.detail)}</small>` : ""}</span>
+            <span><b>${esc(h.title)}</b>${hwSpec(h) ? `<span class="spec">${hwSpec(h)}</span>` : ""}${h.note ? `<span class="note">✔ ${esc(h.note)}</span>` : ""}${h.detail ? `<small>${esc(h.detail)}</small>` : ""}</span>
           </button>`;
         }).join("")}</div>
 
@@ -559,7 +575,9 @@ async function TrainerView() {
   }
 
   /* ----- 회원 상세 ----- */
-  const form = { title: "", detail: "", days: [] };
+  const FORM0 = () => ({ title: "", sets: 3, reps: 15, unit: "회", note: "", days: [] });
+  let form = FORM0();
+  const NOTE_QUICK = ["허리 꺾지 않기", "천천히 내리기", "호흡 멈추지 않기", "통증 있으면 중단", "양쪽 다 하기"];
   function renderDetail() {
     const m = T.members.find(x => x.id === T.sel);
     if (!m) { T.sel = null; return renderHome(); }
@@ -581,18 +599,36 @@ async function TrainerView() {
             <div class="sec-title"><h2>숙제 목록</h2><span class="muted small">${hs.length}개</span></div>
             ${hs.length ? hs.map(h => `
               <div class="hwrow">
-                <div><b>${esc(h.title)}</b> <span class="chip">${daysLabel(h.days)}</span>${h.detail ? `<div class="muted small">${esc(h.detail)}</div>` : ""}</div>
+                <div><b>${esc(h.title)}</b> <span class="chip">${daysLabel(h.days)}</span>${hwSpec(h) ? `<div class="spec" style="font-size:14px;display:block">${hwSpec(h)}</div>` : ""}${h.note ? `<div class="muted small">✔ ${esc(h.note)}</div>` : ""}${h.detail ? `<div class="muted small">${esc(h.detail)}</div>` : ""}</div>
                 <button class="btn ghost" data-delhw="${h.id}" style="padding:7px 10px;font-size:13px">삭제</button>
               </div>`).join("") : `<p class="muted small" style="padding:6px 0 10px">아직 숙제가 없어요. 아래에서 추가하세요.</p>`}
 
             <div class="stack" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
-              <input class="field" id="fTitle" placeholder="운동 이름 (예: 글루트 브릿지)" value="${esc(form.title)}">
-              <input class="field" id="fDetail" placeholder="세트·횟수·주의점 (예: 15회 × 3세트, 허리 꺾지 않기)" value="${esc(form.detail)}">
+              <div>
+                <div class="lbl">운동 이름</div>
+                <input class="field" id="fTitle" placeholder="예: 글루트 브릿지" value="${esc(form.title)}">
+              </div>
+              <div class="num-grid">
+                <div>
+                  <div class="lbl">세트</div>
+                  <div class="stepper"><button data-step="sets" data-d="-1">−</button><input id="fSets" type="number" inputmode="numeric" min="0" value="${form.sets || ""}" placeholder="-"><button data-step="sets" data-d="1">+</button></div>
+                </div>
+                <div>
+                  <div class="lbl">횟수 / 시간</div>
+                  <div class="stepper"><button data-step="reps" data-d="-1">−</button><input id="fReps" type="number" inputmode="numeric" min="0" value="${form.reps || ""}" placeholder="-"><button data-step="reps" data-d="1">+</button></div>
+                  <div class="unit">${["회", "초", "분"].map(u => `<button data-unit="${u}" class="${form.unit === u ? "on" : ""}">${u}</button>`).join("")}</div>
+                </div>
+              </div>
+              <div>
+                <div class="lbl">체크사항 <span style="font-weight:400">(선택)</span></div>
+                <input class="field" id="fNote" placeholder="예: 허리 꺾지 않기, 엉덩이에 힘 주기" value="${esc(form.note)}">
+                <div class="quick">${NOTE_QUICK.map(q => `<button data-quick="${esc(q)}">+ ${esc(q)}</button>`).join("")}</div>
+              </div>
               <div>
                 <div class="muted small" style="margin-bottom:6px">하는 요일 — 안 고르면 <b>매일</b></div>
                 <div class="days">${WEEK_ORDER.map(d => `<button data-dow="${d}" class="${form.days.includes(d) ? "on" : ""}">${DOW[d]}</button>`).join("")}</div>
               </div>
-              <button class="btn primary" id="addHw">숙제 추가</button>
+              <button class="btn primary big" id="addHw" style="font-size:16px;padding:14px">숙제 추가</button>
             </div>
           </section>
 
@@ -643,7 +679,26 @@ async function TrainerView() {
     $("#cpKakao").onclick = () => copyText(kakao);
     $("#cpLink").onclick = () => copyText(link);
     $("#fTitle").oninput = e => form.title = e.target.value;
-    $("#fDetail").oninput = e => form.detail = e.target.value;
+    const numIn = { sets: $("#fSets"), reps: $("#fReps") };
+    numIn.sets.oninput = e => form.sets = Math.max(0, parseInt(e.target.value) || 0);
+    numIn.reps.oninput = e => form.reps = Math.max(0, parseInt(e.target.value) || 0);
+    $$("[data-step]").forEach(b => b.onclick = () => {
+      const k = b.dataset.step, step = k === "reps" && form.unit === "초" ? 5 : 1;
+      form[k] = Math.max(0, (form[k] || 0) + step * +b.dataset.d);
+      numIn[k].value = form[k] || "";
+    });
+    $$("[data-unit]").forEach(b => b.onclick = () => {
+      form.unit = b.dataset.unit;
+      $$("[data-unit]").forEach(x => x.classList.toggle("on", x === b));
+    });
+    const noteIn = $("#fNote");
+    noteIn.oninput = e => form.note = e.target.value;
+    $$("[data-quick]").forEach(b => b.onclick = () => {
+      const q = b.dataset.quick;
+      if (form.note.includes(q)) return;
+      form.note = form.note.trim() ? `${form.note.trim()}, ${q}` : q;
+      noteIn.value = form.note;
+    });
     $$("[data-dow]").forEach(b => b.onclick = () => {
       const d = +b.dataset.dow;
       form.days = form.days.includes(d) ? form.days.filter(x => x !== d) : [...form.days, d];
@@ -653,8 +708,8 @@ async function TrainerView() {
       const title = form.title.trim(); if (!title) { $("#fTitle").focus(); return; }
       $("#addHw").disabled = true;
       try {
-        await api.addHomework(m.id, { title, detail: form.detail.trim(), days: form.days.slice().sort(), sort: hs.length });
-        form.title = ""; form.detail = ""; form.days = [];
+        await api.addHomework(m.id, { title, sets: form.sets || null, reps: form.reps || null, unit: form.unit, note: form.note.trim(), days: form.days.slice().sort(), sort: hs.length });
+        form = FORM0();
         await load(); render(); toast("숙제를 추가했어요");
       } catch (e) { toast("추가하지 못했어요"); $("#addHw").disabled = false; }
     };
