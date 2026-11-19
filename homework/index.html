@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F4EF">
+<title>운동 숙제 체크</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{
+  --bg:#F6F4EF; --card:#FFFFFF; --ink:#1D1F1E; --sub:#6B6F6C; --faint:#A3A6A2; --line:#E6E2DA;
+  --accent:#E8552B; --accent-ink:#B83E1B; --accent-soft:#FDE9E2;
+  --ok:#1F8A5B; --ok-soft:#E1F2E9; --part:#D98E1F; --part-soft:#FBEFD9; --none:#E2DED6;
+  --r:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{font-family:Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink);line-height:1.45;-webkit-font-smoothing:antialiased;min-height:100vh}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;-webkit-tap-highlight-color:transparent}
+input,textarea{font:inherit;color:inherit}
+.wrap{max-width:1040px;margin:0 auto;padding:20px 16px 80px}
+body.member .wrap{max-width:480px;padding-top:28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.muted{color:var(--sub)} .small{font-size:13px}
+h1{font-size:26px;line-height:1.25;letter-spacing:-.02em;font-weight:800}
+h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;border-radius:12px;font-weight:600;font-size:14px;background:#EFECE6;transition:transform .08s,background .15s}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.primary:disabled{opacity:.6}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.btn.danger{background:transparent;color:#C0392B;border:1px solid #F0C9C3}
+.btn.big{width:100%;padding:17px;font-size:17px;border-radius:14px}
+.field{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:#fff;outline:none;font-size:15px}
+.field:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+textarea.field{resize:vertical;min-height:80px}
+.row{display:flex;gap:8px;align-items:center}
+.between{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.stack>*+*{margin-top:12px}
+.banner{background:var(--part-soft);color:#7A4D08;border-radius:12px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.center-box{text-align:center;padding:60px 20px;color:var(--sub)}
+.spinner{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);background:#1D1F1E;color:#fff;padding:11px 18px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:50;white-space:nowrap}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- 회원 화면 ---------- */
+.m-brand{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.02em;margin-bottom:8px}
+.streak{display:inline-block;margin-top:12px;background:var(--accent-soft);color:var(--accent-ink);font-weight:700;font-size:14px;padding:6px 12px;border-radius:999px}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin:22px 0 14px}
+.wd{text-align:center;font-size:12px;color:var(--sub)}
+.wd i{display:block;width:30px;height:30px;margin:5px auto 0;border-radius:50%;background:var(--none)}
+.wd.full i{background:var(--ok)} .wd.part i{background:var(--part)} .wd.rest i{background:transparent;border:2px dashed var(--line)}
+.wd.today span{color:var(--ink);font-weight:800}
+.wd.full i::after{content:"✓";color:#fff;font-weight:800;font-size:15px;line-height:30px;font-style:normal}
+.seg{display:flex;background:#EAE6DF;border-radius:12px;padding:4px;margin-bottom:14px}
+.seg button{flex:1;padding:9px;border-radius:9px;font-weight:600;font-size:14px;color:var(--sub)}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.prog .big{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.bar{height:10px;background:#EFECE6;border-radius:99px;overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+.bar.done i{background:var(--ok)}
+.hw-list{margin:14px 0}
+.hw{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:10px;transition:background .15s,border-color .15s}
+.hw .chk{flex:none;width:32px;height:32px;border-radius:10px;border:2px solid #CFCAC0;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;font-size:18px;transition:.15s}
+.hw b{display:block;font-size:17px;font-weight:700}
+.hw small{display:block;color:var(--sub);font-size:14px;margin-top:2px}
+.hw.on{background:var(--ok-soft);border-color:#B9DFCB}
+.hw.on .chk{background:var(--ok);border-color:var(--ok)}
+.hw.on b{color:#14583A}
+.feel{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:14px 0}
+.feel button{padding:10px 2px;border-radius:12px;border:1.5px solid var(--line);background:#fff;text-align:center}
+.feel button span{display:block;font-size:26px;line-height:1.1}
+.feel button small{display:block;font-size:11px;color:var(--sub);margin-top:4px;white-space:nowrap}
+.feel button.on{border-color:var(--accent);background:var(--accent-soft)}
+.feel button.on small{color:var(--accent-ink);font-weight:700}
+.sent-note{margin-top:12px;text-align:center;color:var(--ok);font-weight:600;font-size:14px}
+.empty{text-align:center;padding:34px 18px;color:var(--sub);font-size:16px}
+.celebrate{position:fixed;inset:0;background:rgba(246,244,239,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:40;animation:fade .2s}
+.celebrate .e{font-size:76px;animation:pop .45s cubic-bezier(.2,1.6,.4,1)}
+.celebrate h2{font-size:24px;margin-top:10px}
+.celebrate p{color:var(--sub);margin-top:6px}
+@keyframes pop{from{transform:scale(.3)}to{transform:scale(1)}}
+@keyframes fade{from{opacity:0}}
+
+/* ---------- 트레이너 화면 ---------- */
+.t-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.t-head h1{font-size:24px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.stat b{display:block;font-size:26px;font-weight:800;letter-spacing:-.02em}
+.stat span{font-size:13px;color:var(--sub)}
+.stat.ok b{color:var(--ok)} .stat.warn b{color:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:860px){.grid2{grid-template-columns:1.6fr 1fr}}
+.sec-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.mrow{display:grid;grid-template-columns:1fr auto;gap:6px 12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:8px;transition:border-color .15s}
+.mrow:hover{border-color:#CFCAC0}
+.mrow .nm{font-weight:700;font-size:16px}
+.mrow .memo{font-size:13px;color:var(--sub)}
+.dots{display:flex;gap:4px;align-items:center}
+.dots i{width:12px;height:12px;border-radius:4px;background:var(--none)}
+.dots i.full{background:var(--ok)} .dots i.part{background:var(--part)} .dots i.rest{background:transparent;border:1.5px dashed #D5D0C6}
+.dots i.today{outline:2px solid var(--ink);outline-offset:1px}
+.chip{display:inline-block;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px;background:#EFECE6;color:var(--sub);white-space:nowrap}
+.chip.full{background:var(--ok-soft);color:var(--ok)} .chip.part{background:var(--part-soft);color:#94600F} .chip.none{background:var(--accent-soft);color:var(--accent-ink)}
+.mrow .last{grid-column:1/-1;font-size:13px;color:var(--sub);border-top:1px dashed var(--line);padding-top:8px;margin-top:2px}
+.feed .item{padding:12px 0;border-bottom:1px solid var(--line)}
+.feed .item:last-child{border-bottom:0}
+.feed .who{font-weight:700}
+.feed .cmt{margin-top:4px;font-size:14px;background:var(--bg);border-radius:10px;padding:8px 10px}
+.back{font-weight:600;color:var(--sub);margin-bottom:12px;display:inline-flex;gap:4px;padding:6px 0}
+.linkbox{background:var(--accent-soft);border:0}
+.linkbox .field{background:#fff;font-size:13px}
+a.btn{color:var(--ink);text-decoration:none}
+.hwrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+.hwrow:last-child{border-bottom:0}
+.hwrow b{font-weight:700}
+.days{display:flex;gap:5px;flex-wrap:wrap}
+.days button{width:36px;height:36px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font-weight:600;font-size:14px}
+.days button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.g{border-collapse:collapse;font-size:12px;min-width:100%}
+table.g th,table.g td{padding:6px 4px;text-align:center;white-space:nowrap}
+table.g th:first-child,table.g td:first-child{text-align:left;padding-right:10px;position:sticky;left:0;background:#fff;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+table.g thead th{color:var(--sub);font-weight:600}
+table.g th.today{color:var(--accent);font-weight:800}
+.c{display:inline-block;width:20px;height:20px;border-radius:6px;line-height:20px;font-weight:800}
+.c.y{background:var(--ok);color:#fff} .c.n{background:var(--none)} .c.p{border:1.5px dashed var(--line);background:transparent} .c.x{color:#D5D0C6}
+.login{max-width:360px;margin:12vh auto 0}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="toast"></div>
+
+<script type="module">
+/* =========================================================
+   설정 — Supabase 연결 정보 (비워두면 '체험 모드'로 동작)
+   Supabase 대시보드 > Project Settings > API 에서 복사
+   ========================================================= */
+const CONFIG = {
+  SUPABASE_URL: "https://rhdpmpuvzvahinbgnksa.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZHBtcHV2enZhaGluYmdua3NhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQzMjk3NTUsImV4cCI6MjEwOTkwNTc1NX0.2Lkj0hr3llBekAuwoDc2Ox-3EaJhgxDsa_UFO9XLpjs",
+  CENTER_NAME: "좋음PT",
+};
+
+/* ---------- 공통 유틸 ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const app = $("#app");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const parseYmd = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const today = () => ymd(new Date());
+const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const fmtDate = s => { const d = parseYmd(s); return `${d.getMonth() + 1}월 ${d.getDate()}일 (${DOW[d.getDay()]})`; };
+const relDay = s => { const n = Math.round((parseYmd(today()) - parseYmd(s)) / 86400000); return n === 0 ? "오늘" : n === 1 ? "어제" : `${n}일 전`; };
+const daysLabel = days => !days || !days.length ? "매일" : WEEK_ORDER.filter(d => days.includes(d)).map(d => DOW[d]).join("·");
+const FEEL = [null,
+  { e: "😫", t: "힘들어요" }, { e: "😕", t: "조금 힘듦" }, { e: "🙂", t: "보통" },
+  { e: "😊", t: "좋아요" }, { e: "💪", t: "최고!" }];
+const randTok = () => { const a = new Uint8Array(12); crypto.getRandomValues(a); return [...a].map(b => b.toString(16).padStart(2, "0")).join(""); };
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : randTok());
+
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2200);
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("복사했어요"); return; } catch (e) {}
+  const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); toast("복사했어요"); } catch (e) { toast("복사가 안 돼요. 직접 선택해서 복사해주세요"); }
+  ta.remove();
+}
+const loading = (msg = "불러오는 중…") => `<div class="center-box"><div class="spinner"></div>${msg}</div>`;
+const errorBox = msg => `<div class="center-box"><div style="font-size:40px;margin-bottom:10px">😥</div>${msg}</div>`;
+
+/* ---------- 숙제 일정 계산 ---------- */
+const createdDay = h => h.created_at ? ymd(new Date(h.created_at)) : "0000-00-00";
+const isScheduled = (h, ds) => ds >= createdDay(h) && (!h.days || !h.days.length || h.days.includes(parseYmd(ds).getDay()));
+function dayStatus(hws, logSet, ds) {
+  const sched = hws.filter(h => isScheduled(h, ds));
+  if (!sched.length) return { status: "rest", done: 0, total: 0 };
+  const done = sched.filter(h => logSet.has(h.id + "|" + ds)).length;
+  return { status: done === sched.length ? "full" : done ? "part" : "none", done, total: sched.length };
+}
+function streak(hws, logSet) {
+  let n = 0, d = new Date();
+  for (let i = 0; i < 90; i++, d = addDays(d, -1)) {
+    const st = dayStatus(hws, logSet, ymd(d)).status;
+    if (st === "full") n++;
+    else if (st === "rest") continue;
+    else if (i === 0) continue;   // 오늘은 아직 진행 중이라 끊지 않음
+    else break;
+  }
+  return n;
+}
+
+/* =========================================================
+   데이터 저장소 1) 체험 모드 — 이 브라우저(localStorage)에만 저장
+   ========================================================= */
+function demoBackend() {
+  const KEY = "hw_demo_v2"; let mem = null;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) {} };
+  const db = () => {
+    // 매번 저장소에서 다시 읽기 (같은 기기의 다른 탭에서 회원 화면을 체크한 내용도 보이도록)
+    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) mem = s; } catch (e) {}
+    if (!mem) { mem = seed(); save(); }
+    return mem;
+  };
+  function seed() {
+    const created = addDays(new Date(), -10).toISOString();
+    const m = { id: uid(), name: "김예시 (샘플)", memo: "허리 통증 · 주 2회 PT", token: randTok(), active: true, created_at: created };
+    const hs = [["버드독", "좌우 10회 × 3세트", []], ["글루트 브릿지", "15회 × 3세트", [1, 3, 5]], ["폼롤러 흉추 스트레칭", "2분", []]]
+      .map(([title, detail, days], i) => ({ id: uid(), member_id: m.id, title, detail, days, sort: i, active: true, created_at: created }));
+    const logs = [], reports = [];
+    for (let i = 1; i <= 6; i++) {
+      const ds = ymd(addDays(new Date(), -i));
+      if (i === 4) continue;
+      hs.forEach((h, j) => { if (isScheduled(h, ds) && !(i === 2 && j === 0)) logs.push({ homework_id: h.id, member_id: m.id, done_date: ds }); });
+      reports.push({ id: uid(), member_id: m.id, report_date: ds, feeling: [4, 3, 5, 0, 4, 4][i - 1], comment: i === 1 ? "브릿지할 때 허리가 덜 아팠어요!" : "", created_at: addDays(new Date(), -i).toISOString() });
+    }
+    const others = ["박샘플", "이샘플"].map(name => ({ id: uid(), name, memo: "", token: randTok(), active: true, created_at: created }));
+    return { members: [m, ...others], homeworks: hs, logs, reports };
+  }
+  const memberByToken = t => db().members.find(m => m.token === t && m.active);
+  return {
+    mode: "demo",
+    async session() { return { email: "demo" }; },
+    async me() { return { id: "demo-trainer", name: "트레이너", role: "admin" }; },
+    async signIn() {}, async signOut() {},
+    async listMembers() { return db().members.slice(); },
+    async addMember(name, memo) {
+      const m = { id: uid(), name, memo: memo || "", token: randTok(), active: true, created_at: new Date().toISOString() };
+      db().members.push(m); save(); return m;
+    },
+    async updateMember(id, patch) { Object.assign(db().members.find(m => m.id === id), patch); save(); },
+    async deleteMember(id) {
+      const d = db();
+      d.members = d.members.filter(m => m.id !== id);
+      d.homeworks = d.homeworks.filter(h => h.member_id !== id);
+      d.logs = d.logs.filter(l => l.member_id !== id);
+      d.reports = d.reports.filter(r => r.member_id !== id);
+      save();
+    },
+    async listHomeworks() { return db().homeworks.filter(h => h.active); },
+    async addHomework(member_id, { title, detail, days, sort }) {
+      const h = { id: uid(), member_id, title, detail, days, sort, active: true, created_at: new Date().toISOString() };
+      db().homeworks.push(h); save(); return h;
+    },
+    async deleteHomework(id) { db().homeworks.find(h => h.id === id).active = false; save(); },
+    async listLogs(from) { return db().logs.filter(l => l.done_date >= from); },
+    async listReports(from) { return db().reports.filter(r => r.report_date >= from); },
+    async memberGet(token) {
+      const m = memberByToken(token); if (!m) return null;
+      const d = db();
+      return {
+        name: m.name,
+        homeworks: d.homeworks.filter(h => h.member_id === m.id && h.active).sort((a, b) => a.sort - b.sort),
+        logs: d.logs.filter(l => l.member_id === m.id),
+        reports: d.reports.filter(r => r.member_id === m.id),
+      };
+    },
+    async memberToggle(token, hwId, date, done) {
+      const m = memberByToken(token); if (!m) throw new Error("bad token");
+      const d = db();
+      d.logs = d.logs.filter(l => !(l.homework_id === hwId && l.done_date === date));
+      if (done) d.logs.push({ homework_id: hwId, member_id: m.id, done_date: date });
+      save();
+    },
+    async memberReport(token, date, feeling, comment) {
+      const m = memberByToken(token); if (!m) throw new Error("bad token");
+      const d = db();
+      d.reports = d.reports.filter(r => !(r.member_id === m.id && r.report_date === date));
+      d.reports.push({ id: uid(), member_id: m.id, report_date: date, feeling, comment, created_at: new Date().toISOString() });
+      save();
+    },
+  };
+}
+
+/* =========================================================
+   데이터 저장소 2) 실제 운영 — Supabase
+   ========================================================= */
+async function supabaseBackend() {
+  const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+  const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  const ok = ({ data, error }) => { if (error) throw error; return data; };
+  return {
+    mode: "live",
+    async session() { const { data } = await sb.auth.getSession(); return data.session?.user || null; },
+    async me() {
+      const u = await this.session(); if (!u) return null;
+      const { data } = await sb.from("profiles").select("id,name,role").eq("id", u.id).maybeSingle();
+      return data || { id: u.id, name: u.email, role: null };
+    },
+    async signIn(email, password) { ok(await sb.auth.signInWithPassword({ email, password })); },
+    async signOut() { await sb.auth.signOut(); },
+    // 회원 목록은 센터 통합 관리(joeum-pt)의 members 테이블을 그대로 사용
+    async listMembers() {
+      const rows = ok(await sb.from("members").select("id,name,memo,goal,trainer_id,hw_token,created_at").order("name"));
+      return rows.map(m => ({ ...m, token: m.hw_token }));
+    },
+    async listHomeworks() { return ok(await sb.from("hw_homeworks").select("*").eq("active", true).order("sort").order("created_at")); },
+    async addHomework(member_id, { title, detail, days, sort }) { return ok(await sb.from("hw_homeworks").insert({ member_id, title, detail, days, sort }).select().single()); },
+    async deleteHomework(id) { ok(await sb.from("hw_homeworks").update({ active: false }).eq("id", id)); },
+    async listLogs(from) { return ok(await sb.from("hw_logs").select("*").gte("done_date", from)); },
+    async listReports(from) { return ok(await sb.from("hw_reports").select("*").gte("report_date", from)); },
+    async memberGet(token) { return ok(await sb.rpc("hw_member_get", { p_token: token })); },
+    async memberToggle(token, hwId, date, done) { ok(await sb.rpc("hw_member_toggle", { p_token: token, p_homework_id: hwId, p_date: date, p_done: done })); },
+    async memberReport(token, date, feeling, comment) { ok(await sb.rpc("hw_member_report", { p_token: token, p_date: date, p_feeling: feeling, p_comment: comment })); },
+  };
+}
+
+/* =========================================================
+   회원 화면  (주소 끝에 ?m=회원코드)
+   ========================================================= */
+async function MemberView(token) {
+  document.body.classList.add("member");
+  app.innerHTML = loading();
+  let data;
+  try { data = await api.memberGet(token); }
+  catch (e) { app.innerHTML = errorBox("불러오지 못했어요.<br>잠시 후 다시 열어주세요."); return; }
+  if (!data) { app.innerHTML = errorBox("링크가 올바르지 않아요.<br>트레이너에게 새 링크를 받아주세요."); return; }
+  document.title = `${data.name}님의 운동 숙제`;
+
+  const hws = data.homeworks || [];
+  const logSet = new Set((data.logs || []).map(l => l.homework_id + "|" + l.done_date));
+  const reports = new Map((data.reports || []).map(r => [r.report_date, r]));
+  const st = { day: today(), feeling: 0, comment: "" };
+  const loadForm = () => { const r = reports.get(st.day); st.feeling = r?.feeling || 0; st.comment = r?.comment || ""; };
+  loadForm();
+
+  function render() {
+    const t = today(), y = ymd(addDays(new Date(), -1));
+    const sched = hws.filter(h => isScheduled(h, st.day));
+    const done = sched.filter(h => logSet.has(h.id + "|" + st.day)).length;
+    const pct = sched.length ? Math.round(done / sched.length * 100) : 0;
+    const rep = reports.get(st.day);
+    const stk = streak(hws, logSet);
+    const week = [...Array(7)].map((_, i) => ymd(addDays(new Date(), i - 6)));
+    const all = sched.length && done === sched.length;
+    const sendLabel = rep ? "수정해서 다시 보내기" : all ? "숙제 완료 알리기 🎉" : done ? "여기까지 했다고 알리기" : "오늘은 못했다고 알리기";
+
+    app.innerHTML = `
+      <div class="m-brand">${esc(CONFIG.CENTER_NAME)} · 운동 숙제</div>
+      <h1>${esc(data.name)}님,<br>${st.day === t ? "오늘도 같이 해봐요" : "어제 숙제도 체크할 수 있어요"}</h1>
+      ${stk ? `<div class="streak">🔥 ${stk}일 연속 완료</div>` : ""}
+
+      <div class="week">${week.map(d => {
+        const s = dayStatus(hws, logSet, d).status;
+        return `<div class="wd ${s} ${d === t ? "today" : ""}"><span>${d === t ? "오늘" : DOW[parseYmd(d).getDay()]}</span><i></i></div>`;
+      }).join("")}</div>
+
+      <div class="seg">
+        <button data-day="${y}" class="${st.day === y ? "on" : ""}">어제</button>
+        <button data-day="${t}" class="${st.day === t ? "on" : ""}">오늘</button>
+      </div>
+
+      ${sched.length ? `
+        <div class="card prog">
+          <div class="muted small">${fmtDate(st.day)}</div>
+          <div class="big">${done} / ${sched.length} 완료</div>
+          <div class="bar ${all ? "done" : ""}"><i style="width:${pct}%"></i></div>
+        </div>
+        <div class="hw-list">${sched.map(h => {
+          const on = logSet.has(h.id + "|" + st.day);
+          return `<button class="hw ${on ? "on" : ""}" data-hw="${h.id}" aria-pressed="${on}">
+            <span class="chk">${on ? "✓" : ""}</span>
+            <span><b>${esc(h.title)}</b>${h.detail ? `<small>${esc(h.detail)}</small>` : ""}</span>
+          </button>`;
+        }).join("")}</div>
+
+        <div class="card">
+          <h2>${st.day === t ? "오늘" : "어제"} 운동 어땠어요?</h2>
+          <div class="feel">${[1, 2, 3, 4, 5].map(v => `<button data-feel="${v}" class="${st.feeling === v ? "on" : ""}"><span>${FEEL[v].e}</span><small>${FEEL[v].t}</small></button>`).join("")}</div>
+          <textarea class="field" id="cmt" rows="3" placeholder="아픈 곳이나 궁금한 점이 있으면 적어주세요 (선택)">${esc(st.comment)}</textarea>
+          <button class="btn primary big" id="send" style="margin-top:12px">${sendLabel}</button>
+          ${rep ? `<p class="sent-note">✓ 선생님께 전달됐어요</p>` : ""}
+        </div>`
+      : `<div class="card empty">${st.day === t ? "오늘은" : "어제는"} 숙제 없는 날이에요 😌<br>푹 쉬고 다음에 만나요!</div>`}
+    `;
+
+    $$("[data-day]").forEach(b => b.onclick = () => { st.day = b.dataset.day; loadForm(); render(); });
+    $$("[data-hw]").forEach(b => b.onclick = async () => {
+      const id = b.dataset.hw, k = id + "|" + st.day, on = !logSet.has(k);
+      on ? logSet.add(k) : logSet.delete(k);
+      if (on && navigator.vibrate) navigator.vibrate(12);
+      render();
+      try { await api.memberToggle(token, id, st.day, on); }
+      catch (e) { on ? logSet.delete(k) : logSet.add(k); render(); toast("저장이 안 됐어요. 인터넷을 확인해주세요"); }
+    });
+    $$("[data-feel]").forEach(b => b.onclick = () => { const v = +b.dataset.feel; st.feeling = st.feeling === v ? 0 : v; render(); });
+    const cmt = $("#cmt"); if (cmt) cmt.oninput = () => { st.comment = cmt.value; };
+    const send = $("#send");
+    if (send) send.onclick = async () => {
+      send.disabled = true; send.textContent = "보내는 중…";
+      const comment = st.comment.trim();
+      try {
+        await api.memberReport(token, st.day, st.feeling || null, comment);
+        reports.set(st.day, { report_date: st.day, feeling: st.feeling, comment, created_at: new Date().toISOString() });
+        celebrate(all, done);
+        render();
+      } catch (e) { send.disabled = false; send.textContent = "다시 시도하기"; toast("보내지 못했어요. 다시 시도해주세요"); }
+    };
+  }
+
+  function celebrate(all, done) {
+    const el = document.createElement("div");
+    el.className = "celebrate";
+    el.innerHTML = all ? `<div class="e">💪</div><h2>잘했어요!</h2><p>선생님께 숙제 완료를 알렸어요</p>`
+      : done ? `<div class="e">👏</div><h2>수고했어요!</h2><p>한 만큼 선생님께 전달했어요</p>`
+      : `<div class="e">🙌</div><h2>알려줘서 고마워요</h2><p>다음엔 같이 해봐요!</p>`;
+    el.onclick = () => el.remove();
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2000);
+  }
+  render();
+}
+
+/* =========================================================
+   트레이너 화면
+   ========================================================= */
+function LoginView() {
+  app.innerHTML = `
+    <div class="login card stack">
+      <div class="m-brand">${esc(CONFIG.CENTER_NAME)}</div>
+      <h1>운동 숙제 체크</h1>
+      <p class="muted small">트레이너 계정으로 로그인하세요</p>
+      <input class="field" id="em" type="email" placeholder="이메일" autocomplete="username">
+      <input class="field" id="pw" type="password" placeholder="비밀번호" autocomplete="current-password">
+      <button class="btn primary big" id="go">로그인</button>
+      <p class="small" id="err" style="color:#C0392B"></p>
+    </div>`;
+  const go = async () => {
+    $("#err").textContent = ""; $("#go").disabled = true;
+    try { await api.signIn($("#em").value.trim(), $("#pw").value); TrainerView(); }
+    catch (e) {
+      $("#err").textContent = /invalid login/i.test(e?.message || "") ? "이메일이나 비밀번호가 맞지 않아요." : "로그인 오류: " + (e?.message || e);
+      $("#go").disabled = false;
+    }
+  };
+  $("#go").onclick = go;
+  $("#pw").onkeydown = e => { if (e.key === "Enter") go(); };
+}
+
+async function TrainerView() {
+  document.body.classList.add("trainer");
+  if (api.mode === "live" && !(await api.session())) return LoginView();
+
+  const me = await api.me();
+  const T = { members: [], hws: [], logs: [], reports: [], logSet: new Set(), sel: null, q: "", mine: me?.role === "trainer" };
+  const memberLink = m => `${location.origin}${location.pathname}?m=${m.token}${api.mode === "demo" ? "&demo" : ""}`;
+  const hwsOf = id => T.hws.filter(h => h.member_id === id).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  const repsOf = id => T.reports.filter(r => r.member_id === id);
+  const nameOf = id => T.members.find(m => m.id === id)?.name || "(삭제된 회원)";
+
+  async function load() {
+    const from = ymd(addDays(new Date(), -30));
+    [T.members, T.hws, T.logs, T.reports] = await Promise.all([api.listMembers(), api.listHomeworks(), api.listLogs(from), api.listReports(from)]);
+    T.logSet = new Set(T.logs.map(l => l.homework_id + "|" + l.done_date));
+    T.reports.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  }
+  async function refresh() {
+    try { await load(); render(); }
+    catch (e) { app.innerHTML = errorBox("데이터를 불러오지 못했어요.<br>" + esc(e.message || "")); }
+  }
+
+  function render() { T.sel ? renderDetail() : renderHome(); }
+
+  /* ----- 대시보드 ----- */
+  function renderHome() {
+    const t = today();
+    const week = [...Array(7)].map((_, i) => ymd(addDays(new Date(), i - 6)));
+    let withHw = 0, full = 0, pending = 0;
+    const pool = T.members.filter(m => !T.mine || m.trainer_id === me?.id);
+    const active = pool.filter(m => hwsOf(m.id).length || repsOf(m.id).length);
+    const q = T.q.trim();
+    const rows = active.map(m => {
+      const hs = hwsOf(m.id), s = dayStatus(hs, T.logSet, t);
+      if (s.total) { withHw++; s.status === "full" ? full++ : pending++; }
+      const last = repsOf(m.id)[0];
+      return { m, hs, s, last };
+    });
+
+    app.innerHTML = `
+      ${api.mode === "demo" ? `<div class="banner">체험 모드예요 — 데이터가 이 브라우저에만 저장돼요. 주소 끝의 ?demo 를 지우면 실제 센터 데이터로 열려요.</div>` : ""}
+      <div class="t-head">
+        <div><div class="m-brand">${esc(CONFIG.CENTER_NAME)}</div><h1>운동 숙제 체크</h1><div class="muted small">${fmtDate(t)}</div></div>
+        <div class="row">
+          <button class="btn ghost" id="reload">새로고침</button>
+          ${api.mode === "live" ? `<button class="btn ghost" id="logout">로그아웃</button>` : ""}
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><b>${withHw}</b><span>오늘 숙제 있는 회원</span></div>
+        <div class="stat ok"><b>${full}</b><span>모두 완료</span></div>
+        <div class="stat warn"><b>${pending}</b><span>아직 안 함 / 진행 중</span></div>
+      </div>
+
+      <div class="grid2">
+        <section>
+          <div class="sec-title"><h2>숙제 중인 회원</h2>
+            ${me?.role === "trainer" || T.members.some(m => m.trainer_id === me?.id) ? `<div class="seg" style="margin:0;width:150px">
+              <button data-mine="1" class="${T.mine ? "on" : ""}">내 회원</button><button data-mine="0" class="${!T.mine ? "on" : ""}">전체</button>
+            </div>` : `<span class="muted small">최근 7일</span>`}
+          </div>
+          <div class="card" style="margin-bottom:10px;padding:12px">
+            <input class="field" id="q" placeholder="🔍 숙제 줄 회원 이름 검색" value="${esc(T.q)}" autocomplete="off">
+            <div id="qres"></div>
+          </div>
+          ${rows.length ? rows.map(({ m, hs, s, last }) => `
+            <button class="mrow" data-m="${m.id}">
+              <div><div class="nm">${esc(m.name)}</div>${m.memo ? `<div class="memo">${esc(m.memo)}</div>` : ""}</div>
+              <div style="text-align:right">
+                ${!hs.length ? `<span class="chip">숙제 없음</span>` : s.total ? `<span class="chip ${s.status}">오늘 ${s.done}/${s.total}</span>` : `<span class="chip">오늘 쉬는 날</span>`}
+                <div class="dots" style="margin-top:8px;justify-content:flex-end">${week.map(d => `<i class="${dayStatus(hs, T.logSet, d).status} ${d === t ? "today" : ""}" title="${fmtDate(d)}"></i>`).join("")}</div>
+              </div>
+              ${last ? `<div class="last">${last.feeling ? FEEL[last.feeling].e + " " : ""}<b>${relDay(last.report_date)}</b> 보고${last.comment ? ` · “${esc(last.comment)}”` : ""}</div>` : ""}
+            </button>`).join("")
+          : `<div class="card empty">아직 숙제를 준 회원이 없어요.<br>위에서 회원 이름을 검색해서 숙제를 넣어보세요.</div>`}
+        </section>
+
+        <section>
+          <div class="sec-title"><h2>최근 보고</h2></div>
+          <div class="card feed">
+            ${T.reports.length ? T.reports.slice(0, 25).map(r => `
+              <div class="item">
+                <div class="between"><span class="who">${r.feeling ? FEEL[r.feeling].e + " " : ""}${esc(nameOf(r.member_id))}</span><span class="muted small">${relDay(r.report_date)}</span></div>
+                ${(() => { const s = dayStatus(hwsOf(r.member_id), T.logSet, r.report_date); return s.total ? `<div class="small muted">숙제 ${s.done}/${s.total} 완료${r.feeling ? ` · ${FEEL[r.feeling].t}` : ""}</div>` : ""; })()}
+                ${r.comment ? `<div class="cmt">${esc(r.comment)}</div>` : ""}
+              </div>`).join("")
+            : `<div class="muted small" style="padding:8px 0">회원이 숙제를 보고하면 여기에 쌓여요.</div>`}
+          </div>
+        </section>
+      </div>`;
+
+    $("#reload").onclick = refresh;
+    if ($("#logout")) $("#logout").onclick = async () => { await api.signOut(); LoginView(); };
+    const openMember = id => { T.sel = id; T.q = ""; render(); window.scrollTo(0, 0); };
+    // 검색 결과만 다시 그림 (입력창은 그대로 두어 한글 입력이 끊기지 않게)
+    const renderResults = () => {
+      const q = T.q.trim(), box = $("#qres");
+      if (!q) { box.innerHTML = ""; return; }
+      const found = T.members.filter(m => m.name.includes(q)).slice(0, 8);
+      box.innerHTML = `<div style="margin-top:8px">${found.length ? found.map(m => `
+        <button class="hwrow" data-m="${m.id}" style="width:100%;text-align:left">
+          <span><b>${esc(m.name)}</b> ${m.goal || m.memo ? `<span class="muted small">${esc(m.goal || m.memo)}</span>` : ""}</span>
+          <span class="chip">${hwsOf(m.id).length ? `숙제 ${hwsOf(m.id).length}개` : "숙제 주기 →"}</span>
+        </button>`).join("") : `<p class="muted small" style="padding:6px 0">'${esc(q)}' 회원이 없어요. 회원 등록은 센터 관리 프로그램에서 해주세요.</p>`}</div>`;
+      $$("[data-m]", box).forEach(b => b.onclick = () => openMember(b.dataset.m));
+    };
+    const qi = $("#q");
+    qi.oninput = () => { T.q = qi.value; renderResults(); };
+    renderResults();
+    $$("[data-mine]").forEach(b => b.onclick = () => { T.mine = b.dataset.mine === "1"; render(); });
+    $$(".mrow[data-m]").forEach(b => b.onclick = () => openMember(b.dataset.m));
+  }
+
+  /* ----- 회원 상세 ----- */
+  const form = { title: "", detail: "", days: [] };
+  function renderDetail() {
+    const m = T.members.find(x => x.id === T.sel);
+    if (!m) { T.sel = null; return renderHome(); }
+    const hs = hwsOf(m.id), reps = repsOf(m.id), link = memberLink(m), t = today();
+    const dates = [...Array(14)].map((_, i) => ymd(addDays(new Date(), i - 13)));
+    const repByDay = new Map(reps.map(r => [r.report_date, r]));
+    const kakao = `${m.name}님, 집에서 하는 운동 숙제예요 💪\n운동하고 아래 링크에서 체크만 해주시면 제가 바로 확인할게요!\n👉 ${link}`;
+
+    app.innerHTML = `
+      <button class="back" id="back">← 전체 회원</button>
+      <div class="t-head">
+        <div><h1>${esc(m.name)}</h1>${m.goal || m.memo ? `<div class="muted small">${esc([m.goal, m.memo].filter(Boolean).join(" · "))}</div>` : ""}</div>
+        <span class="chip ${dayStatus(hs, T.logSet, t).status}">🔥 ${streak(hs, T.logSet)}일 연속</span>
+      </div>
+
+      <div class="grid2">
+        <div class="stack">
+          <section class="card">
+            <div class="sec-title"><h2>숙제 목록</h2><span class="muted small">${hs.length}개</span></div>
+            ${hs.length ? hs.map(h => `
+              <div class="hwrow">
+                <div><b>${esc(h.title)}</b> <span class="chip">${daysLabel(h.days)}</span>${h.detail ? `<div class="muted small">${esc(h.detail)}</div>` : ""}</div>
+                <button class="btn ghost" data-delhw="${h.id}" style="padding:7px 10px;font-size:13px">삭제</button>
+              </div>`).join("") : `<p class="muted small" style="padding:6px 0 10px">아직 숙제가 없어요. 아래에서 추가하세요.</p>`}
+
+            <div class="stack" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+              <input class="field" id="fTitle" placeholder="운동 이름 (예: 글루트 브릿지)" value="${esc(form.title)}">
+              <input class="field" id="fDetail" placeholder="세트·횟수·주의점 (예: 15회 × 3세트, 허리 꺾지 않기)" value="${esc(form.detail)}">
+              <div>
+                <div class="muted small" style="margin-bottom:6px">하는 요일 — 안 고르면 <b>매일</b></div>
+                <div class="days">${WEEK_ORDER.map(d => `<button data-dow="${d}" class="${form.days.includes(d) ? "on" : ""}">${DOW[d]}</button>`).join("")}</div>
+              </div>
+              <button class="btn primary" id="addHw">숙제 추가</button>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="sec-title"><h2>최근 2주 기록</h2></div>
+            ${hs.length ? `<div class="tbl-wrap"><table class="g">
+              <thead>
+                <tr><th></th>${dates.map(d => `<th class="${d === t ? "today" : ""}">${DOW[parseYmd(d).getDay()]}<br>${parseYmd(d).getDate()}</th>`).join("")}</tr>
+              </thead>
+              <tbody>
+                ${hs.map(h => `<tr><td title="${esc(h.title)}">${esc(h.title)}</td>${dates.map(d => {
+                  if (!isScheduled(h, d)) return `<td><span class="c x">·</span></td>`;
+                  if (T.logSet.has(h.id + "|" + d)) return `<td><span class="c y">✓</span></td>`;
+                  return `<td><span class="c ${d === t ? "p" : "n"}"></span></td>`;
+                }).join("")}</tr>`).join("")}
+                <tr><td class="muted">기분</td>${dates.map(d => { const r = repByDay.get(d); return `<td>${r ? (r.feeling ? FEEL[r.feeling].e : "✉️") : ""}</td>`; }).join("")}</tr>
+              </tbody>
+            </table></div>` : `<p class="muted small">숙제를 추가하면 기록이 표시돼요.</p>`}
+          </section>
+        </div>
+
+        <div class="stack">
+          <section class="card linkbox stack">
+            <h2>회원에게 보낼 링크</h2>
+            <p class="small muted">회원은 로그인 없이 이 링크만 열면 돼요. 휴대폰 홈 화면에 추가해두면 앱처럼 쓸 수 있어요.</p>
+            <input class="field" readonly value="${esc(link)}" onclick="this.select()">
+            <div class="row" style="flex-wrap:wrap">
+              <button class="btn primary" id="cpKakao">카톡 메시지 복사</button>
+              <button class="btn" id="cpLink">링크만 복사</button>
+              <a class="btn ghost" href="${esc(link)}" target="_blank" rel="noopener" style="text-decoration:none">회원 화면 보기</a>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="sec-title"><h2>보고 내역</h2><span class="muted small">최근 30일</span></div>
+            <div class="feed">
+              ${reps.length ? reps.map(r => `
+                <div class="item">
+                  <div class="between"><span class="who">${r.feeling ? FEEL[r.feeling].e + " " + FEEL[r.feeling].t : "보고"}</span><span class="muted small">${fmtDate(r.report_date)}</span></div>
+                  ${r.comment ? `<div class="cmt">${esc(r.comment)}</div>` : ""}
+                </div>`).join("") : `<p class="muted small">아직 보고가 없어요.</p>`}
+            </div>
+          </section>
+        </div>
+      </div>`;
+
+    $("#back").onclick = () => { T.sel = null; render(); window.scrollTo(0, 0); };
+    $("#cpKakao").onclick = () => copyText(kakao);
+    $("#cpLink").onclick = () => copyText(link);
+    $("#fTitle").oninput = e => form.title = e.target.value;
+    $("#fDetail").oninput = e => form.detail = e.target.value;
+    $$("[data-dow]").forEach(b => b.onclick = () => {
+      const d = +b.dataset.dow;
+      form.days = form.days.includes(d) ? form.days.filter(x => x !== d) : [...form.days, d];
+      b.classList.toggle("on");
+    });
+    $("#addHw").onclick = async () => {
+      const title = form.title.trim(); if (!title) { $("#fTitle").focus(); return; }
+      $("#addHw").disabled = true;
+      try {
+        await api.addHomework(m.id, { title, detail: form.detail.trim(), days: form.days.slice().sort(), sort: hs.length });
+        form.title = ""; form.detail = ""; form.days = [];
+        await load(); render(); toast("숙제를 추가했어요");
+      } catch (e) { toast("추가하지 못했어요"); $("#addHw").disabled = false; }
+    };
+    $$("[data-delhw]").forEach(b => b.onclick = async () => {
+      try { await api.deleteHomework(b.dataset.delhw); await load(); render(); toast("숙제를 뺐어요 (기록은 남아요)"); }
+      catch (e) { toast("삭제하지 못했어요"); }
+    });
+  }
+
+  app.innerHTML = loading();
+  await refresh();
+  // 1분마다 자동 새로고침 (대시보드에서 입력 중이 아닐 때만)
+  setInterval(() => {
+    if (!T.sel && document.visibilityState === "visible" && !document.activeElement?.matches("input,textarea")) refresh();
+  }, 60000);
+}
+
+/* ---------- 시작 ---------- */
+let api;
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const token = params.get("m");
+  const demo = params.has("demo") || !(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY);
+  try { api = demo ? demoBackend() : await supabaseBackend(); }
+  catch (e) { app.innerHTML = errorBox("서버에 연결하지 못했어요.<br>인터넷 연결을 확인해주세요."); return; }
+  token ? MemberView(token) : TrainerView();
+})();
+</script>
+</body>
+</html>
