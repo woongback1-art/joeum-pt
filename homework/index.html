@@ -103,6 +103,13 @@ textarea.field{resize:vertical;min-height:80px}
 .dots i.full{background:var(--ok)} .dots i.part{background:var(--part)} .dots i.rest{background:transparent;border:1.5px dashed #D5D0C6}
 .dots i.today{outline:2px solid var(--ink);outline-offset:1px}
 .chip{display:inline-block;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px;background:#EFECE6;color:var(--sub);white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:4px;font-weight:800;font-size:13.5px;padding:6px 11px;border-radius:999px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.part{background:var(--part-soft);color:#94600F}
+.pill.bad{background:#FDE3E0;color:#C0392B} .pill.wait{background:#EFECE6;color:var(--sub)}
+.stats{grid-template-columns:repeat(4,1fr)}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat.part b{color:#94600F} .stat.bad b{color:#C0392B} .stat.wait b{color:var(--sub)}
+.feed .item.bad{border-left:3px solid #E5857A;padding-left:10px}
 .chip.full{background:var(--ok-soft);color:var(--ok)} .chip.part{background:var(--part-soft);color:#94600F} .chip.none{background:var(--accent-soft);color:var(--accent-ink)}
 .mrow .last{grid-column:1/-1;font-size:13px;color:var(--sub);border-top:1px dashed var(--line);padding-top:8px;margin-top:2px}
 .feed .item{padding:12px 0;border-bottom:1px solid var(--line)}
@@ -491,6 +498,18 @@ async function TrainerView() {
   const hwsOf = id => T.hws.filter(h => h.member_id === id).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
   const repsOf = id => T.reports.filter(r => r.member_id === id);
   const nameOf = id => T.members.find(m => m.id === id)?.name || "(삭제된 회원)";
+  // 그날 숙제 결과 판정: 다 함 / 일부 / 못 함 / 소식 없음
+  const judge = (memberId, ds) => {
+    const s = dayStatus(hwsOf(memberId), T.logSet, ds);
+    const rep = T.reports.find(r => r.member_id === memberId && r.report_date === ds);
+    if (!s.total) return { k: "rest", cls: "wait", txt: "😌 쉬는 날", s, rep };
+    if (s.done === s.total) return { k: "ok", cls: "ok", txt: "✅ 다 했어요", s, rep };
+    if (s.done > 0) return { k: "part", cls: "part", txt: `🔸 일부만 (${s.done}/${s.total})`, s, rep };
+    if (rep) return { k: "bad", cls: "bad", txt: "❌ 못 했어요", s, rep };
+    return ds === today() ? { k: "wait", cls: "wait", txt: "⏳ 아직 소식 없음", s, rep }
+                          : { k: "bad", cls: "bad", txt: "❌ 안 함 (보고 없음)", s, rep };
+  };
+  const pill = j => `<span class="pill ${j.cls}">${j.txt}</span>`;
 
   async function load() {
     const from = ymd(addDays(new Date(), -30));
@@ -509,19 +528,19 @@ async function TrainerView() {
   function renderHome() {
     const t = today();
     const week = [...Array(7)].map((_, i) => ymd(addDays(new Date(), i - 6)));
-    let withHw = 0, full = 0, pending = 0;
+    const cnt = { ok: 0, part: 0, bad: 0, wait: 0 };
     const pool = T.members.filter(m => !T.mine || m.trainer_id === me?.id);
     const rows = pool.map(m => {
-      const hs = hwsOf(m.id), s = dayStatus(hs, T.logSet, t);
-      if (s.total) { withHw++; s.status === "full" ? full++ : pending++; }
+      const hs = hwsOf(m.id), s = dayStatus(hs, T.logSet, t), j = judge(m.id, t);
+      if (hs.length && j.k in cnt) cnt[j.k]++;
       const last = repsOf(m.id)[0];
-      return { m, hs, s, last };
+      return { m, hs, s, j, last };
     }).sort((a, b) => (b.hs.length > 0) - (a.hs.length > 0) || a.m.name.localeCompare(b.m.name, "ko"));
-    const rowHtml = ({ m, hs, s, last }) => hs.length ? `
+    const rowHtml = ({ m, hs, s, j, last }) => hs.length ? `
             <button class="mrow" data-m="${m.id}">
               <div><div class="nm">${esc(m.name)}</div>${m.goal || m.memo ? `<div class="memo">${esc(m.goal || m.memo)}</div>` : ""}</div>
               <div style="text-align:right">
-                ${s.total ? `<span class="chip ${s.status}">오늘 ${s.done}/${s.total}</span>` : `<span class="chip">오늘 쉬는 날</span>`}
+                ${pill(j)}
                 <div class="dots" style="margin-top:8px;justify-content:flex-end">${week.map(d => `<i class="${dayStatus(hs, T.logSet, d).status} ${d === t ? "today" : ""}" title="${fmtDate(d)}"></i>`).join("")}</div>
               </div>
               ${last ? `<div class="last">${last.feeling ? FEEL[last.feeling].e + " " : ""}<b>${relDay(last.report_date)}</b> 보고${last.comment ? ` · “${esc(last.comment)}”` : ""}</div>` : ""}
@@ -542,9 +561,10 @@ async function TrainerView() {
       </div>
 
       <div class="stats">
-        <div class="stat"><b>${withHw}</b><span>오늘 숙제 있는 회원</span></div>
-        <div class="stat ok"><b>${full}</b><span>모두 완료</span></div>
-        <div class="stat warn"><b>${pending}</b><span>아직 안 함 / 진행 중</span></div>
+        <div class="stat ok"><b>${cnt.ok}</b><span>✅ 오늘 다 했어요</span></div>
+        <div class="stat part"><b>${cnt.part}</b><span>🔸 일부만 했어요</span></div>
+        <div class="stat bad"><b>${cnt.bad}</b><span>❌ 못 했어요</span></div>
+        <div class="stat wait"><b>${cnt.wait}</b><span>⏳ 아직 소식 없음</span></div>
       </div>
 
       <div class="grid2">
@@ -564,11 +584,12 @@ async function TrainerView() {
           <div class="sec-title"><h2>최근 보고</h2></div>
           <div class="card feed">
             ${T.reports.length ? T.reports.slice(0, 25).map(r => `
-              <div class="item">
-                <div class="between"><span class="who">${r.feeling ? FEEL[r.feeling].e + " " : ""}${esc(nameOf(r.member_id))}</span><span class="muted small">${relDay(r.report_date)}</span></div>
-                ${(() => { const s = dayStatus(hwsOf(r.member_id), T.logSet, r.report_date); return s.total ? `<div class="small muted">숙제 ${s.done}/${s.total} 완료${r.feeling ? ` · ${FEEL[r.feeling].t}` : ""}</div>` : ""; })()}
+${(() => { const j = judge(r.member_id, r.report_date); return `
+              <div class="item ${j.cls === "bad" ? "bad" : ""}">
+                <div class="between"><span class="who">${esc(nameOf(r.member_id))}</span><span class="muted small">${relDay(r.report_date)}</span></div>
+                <div class="row" style="margin-top:6px;flex-wrap:wrap">${pill(j)}${r.feeling ? `<span class="small muted">${FEEL[r.feeling].e} ${FEEL[r.feeling].t}</span>` : ""}</div>
                 ${r.comment ? `<div class="cmt">${esc(r.comment)}</div>` : ""}
-              </div>`).join("")
+              </div>`; })()}`).join("")
             : `<div class="muted small" style="padding:8px 0">회원이 숙제를 보고하면 여기에 쌓여요.</div>`}
           </div>
         </section>
@@ -608,7 +629,7 @@ async function TrainerView() {
       <button class="back" id="back">← 전체 회원</button>
       <div class="t-head">
         <div><h1>${esc(m.name)}</h1>${m.goal || m.memo ? `<div class="muted small">${esc([m.goal, m.memo].filter(Boolean).join(" · "))}</div>` : ""}</div>
-        <span class="chip ${dayStatus(hs, T.logSet, t).status}">🔥 ${streak(hs, T.logSet)}일 연속</span>
+        <div class="row" style="flex-wrap:wrap;justify-content:flex-end">${hs.length ? `<span class="muted small">오늘</span>${pill(judge(m.id, t))}` : ""}<span class="chip">🔥 ${streak(hs, T.logSet)}일 연속</span></div>
       </div>
 
       <div class="grid2">
@@ -674,6 +695,7 @@ async function TrainerView() {
                   if (T.logSet.has(h.id + "|" + d)) return `<td><span class="c y">✓</span></td>`;
                   return `<td><span class="c ${d === t ? "p" : "n"}"></span></td>`;
                 }).join("")}</tr>`).join("")}
+                <tr><td class="muted"><b>결과</b></td>${dates.map(d => { const j = judge(m.id, d); return `<td title="${j.txt}">${{ ok: "✅", part: "🔸", bad: "❌", wait: "", rest: "" }[j.k]}</td>`; }).join("")}</tr>
                 <tr><td class="muted">기분</td>${dates.map(d => { const r = repByDay.get(d); return `<td>${r ? (r.feeling ? FEEL[r.feeling].e : "✉️") : ""}</td>`; }).join("")}</tr>
               </tbody>
             </table></div>` : `<p class="muted small">숙제를 추가하면 기록이 표시돼요.</p>`}
@@ -697,7 +719,8 @@ async function TrainerView() {
             <div class="feed">
               ${reps.length ? reps.map(r => `
                 <div class="item">
-                  <div class="between"><span class="who">${r.feeling ? FEEL[r.feeling].e + " " + FEEL[r.feeling].t : "보고"}</span><span class="muted small">${fmtDate(r.report_date)}</span></div>
+                  <div class="between">${pill(judge(m.id, r.report_date))}<span class="muted small">${fmtDate(r.report_date)}</span></div>
+                  ${r.feeling ? `<div class="small muted" style="margin-top:4px">${FEEL[r.feeling].e} ${FEEL[r.feeling].t}</div>` : ""}
                   ${r.comment ? `<div class="cmt">${esc(r.comment)}</div>` : ""}
                 </div>`).join("") : `<p class="muted small">아직 보고가 없어요.</p>`}
             </div>
