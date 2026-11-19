@@ -131,6 +131,14 @@ table.g th.today{color:var(--accent);font-weight:800}
 .spec{display:inline-block;margin-top:4px;font-weight:700;color:var(--accent-ink);font-size:15px}
 .hw.on .spec{color:#14583A}
 .note{display:block;margin-top:4px;color:var(--sub);font-size:13.5px}
+.howto-btn{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;color:var(--sub);background:var(--bg);border-radius:8px;padding:5px 10px}
+.howto{margin:-4px 0 10px;background:#fff;border:1.5px solid var(--line);border-top:0;border-radius:0 0 var(--r) var(--r);padding:12px 16px 14px 18px}
+.howto ol,.hwrow ol{padding-left:20px;font-size:14.5px;line-height:1.6}
+.howto li+li{margin-top:4px}
+.hw.open{border-radius:var(--r) var(--r) 0 0;margin-bottom:0}
+.hwrow.editing{background:var(--accent-soft);margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:10px}
+.hwrow ol{margin-top:4px;color:var(--sub);font-size:13px}
+.form-title{display:flex;justify-content:space-between;align-items:center}
 .lbl{font-size:13px;color:var(--sub);font-weight:600;margin-bottom:6px}
 .num-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .stepper{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
@@ -176,6 +184,7 @@ const fmtDate = s => { const d = parseYmd(s); return `${d.getMonth() + 1}월 ${d
 const relDay = s => { const n = Math.round((parseYmd(today()) - parseYmd(s)) / 86400000); return n === 0 ? "오늘" : n === 1 ? "어제" : `${n}일 전`; };
 const daysLabel = days => !days || !days.length ? "매일" : WEEK_ORDER.filter(d => days.includes(d)).map(d => DOW[d]).join("·");
 const hwSpec = h => [h.sets ? `${h.sets}세트` : "", h.reps ? `${h.reps}${h.unit || "회"}` : ""].filter(Boolean).join(" × ");
+const howSteps = t => String(t || "").split(/\n+/).map(x => x.replace(/^\s*(\d+[.)]|[-•·*])\s*/, "").trim()).filter(Boolean);
 const FEEL = [null,
   { e: "😫", t: "힘들어요" }, { e: "😕", t: "조금 힘듦" }, { e: "🙂", t: "보통" },
   { e: "😊", t: "좋아요" }, { e: "💪", t: "최고!" }];
@@ -221,7 +230,7 @@ function streak(hws, logSet) {
    데이터 저장소 1) 체험 모드 — 이 브라우저(localStorage)에만 저장
    ========================================================= */
 function demoBackend() {
-  const KEY = "hw_demo_v3"; let mem = null;
+  const KEY = "hw_demo_v4"; let mem = null;
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) {} };
   const db = () => {
     // 매번 저장소에서 다시 읽기 (같은 기기의 다른 탭에서 회원 화면을 체크한 내용도 보이도록)
@@ -233,7 +242,7 @@ function demoBackend() {
     const created = addDays(new Date(), -10).toISOString();
     const m = { id: uid(), name: "김예시 (샘플)", memo: "허리 통증 · 주 2회 PT", token: randTok(), active: true, created_at: created };
     const hs = [["버드독", 3, 10, "회", "좌우 번갈아, 허리 꺾지 않기", []], ["글루트 브릿지", 3, 15, "회", "엉덩이에 힘 주고 2초 멈추기", [1, 3, 5]], ["폼롤러 흉추 스트레칭", 1, 2, "분", "", []]]
-      .map(([title, sets, reps, unit, note, days], i) => ({ id: uid(), member_id: m.id, title, detail: "", sets, reps, unit, note, days, sort: i, active: true, created_at: created }));
+      .map(([title, sets, reps, unit, note, days], i) => ({ id: uid(), member_id: m.id, title, detail: "", sets, reps, unit, note, days, how_to: i === 1 ? "바닥에 누워 무릎을 세운다\n엉덩이를 들어 올려 2초 멈춘다\n천천히 내린다" : "", sort: i, active: true, created_at: created }));
     const logs = [], reports = [];
     for (let i = 1; i <= 6; i++) {
       const ds = ymd(addDays(new Date(), -i));
@@ -265,8 +274,9 @@ function demoBackend() {
       save();
     },
     async listHomeworks() { return db().homeworks.filter(h => h.active); },
-    async addHomework(member_id, { title, sets, reps, unit, note, days, sort }) {
-      const h = { id: uid(), member_id, title, detail: "", sets, reps, unit, note, days, sort, active: true, created_at: new Date().toISOString() };
+    async updateHomework(id, fields) { Object.assign(db().homeworks.find(h => h.id === id), fields, { detail: "" }); save(); },
+    async addHomework(member_id, { title, sets, reps, unit, note, how_to, days, sort }) {
+      const h = { id: uid(), member_id, title, detail: "", sets, reps, unit, note, how_to, days, sort, active: true, created_at: new Date().toISOString() };
       db().homeworks.push(h); save(); return h;
     },
     async deleteHomework(id) { db().homeworks.find(h => h.id === id).active = false; save(); },
@@ -322,7 +332,8 @@ async function supabaseBackend() {
       return rows.map(m => ({ ...m, token: m.hw_token }));
     },
     async listHomeworks() { return ok(await sb.from("hw_homeworks").select("*").eq("active", true).order("sort").order("created_at")); },
-    async addHomework(member_id, { title, sets, reps, unit, note, days, sort }) { return ok(await sb.from("hw_homeworks").insert({ member_id, title, sets, reps, unit, note, days, sort }).select().single()); },
+    async addHomework(member_id, { title, sets, reps, unit, note, how_to, days, sort }) { return ok(await sb.from("hw_homeworks").insert({ member_id, title, sets, reps, unit, note, how_to, days, sort }).select().single()); },
+    async updateHomework(id, fields) { ok(await sb.from("hw_homeworks").update({ ...fields, detail: "" }).eq("id", id)); },
     async deleteHomework(id) { ok(await sb.from("hw_homeworks").update({ active: false }).eq("id", id)); },
     async listLogs(from) { return ok(await sb.from("hw_logs").select("*").gte("done_date", from)); },
     async listReports(from) { return ok(await sb.from("hw_reports").select("*").gte("report_date", from)); },
@@ -347,7 +358,7 @@ async function MemberView(token) {
   const hws = data.homeworks || [];
   const logSet = new Set((data.logs || []).map(l => l.homework_id + "|" + l.done_date));
   const reports = new Map((data.reports || []).map(r => [r.report_date, r]));
-  const st = { day: today(), feeling: 0, comment: "" };
+  const st = { day: today(), feeling: 0, comment: "", open: new Set() };
   const loadForm = () => { const r = reports.get(st.day); st.feeling = r?.feeling || 0; st.comment = r?.comment || ""; };
   loadForm();
 
@@ -385,10 +396,12 @@ async function MemberView(token) {
         </div>
         <div class="hw-list">${sched.map(h => {
           const on = logSet.has(h.id + "|" + st.day);
-          return `<button class="hw ${on ? "on" : ""}" data-hw="${h.id}" aria-pressed="${on}">
+          const steps = howSteps(h.how_to), open = st.open.has(h.id);
+          return `<div class="hw ${on ? "on" : ""} ${open ? "open" : ""}" data-hw="${h.id}" role="button" aria-pressed="${on}" tabindex="0">
             <span class="chk">${on ? "✓" : ""}</span>
-            <span><b>${esc(h.title)}</b>${hwSpec(h) ? `<span class="spec">${hwSpec(h)}</span>` : ""}${h.note ? `<span class="note">✔ ${esc(h.note)}</span>` : ""}${h.detail ? `<small>${esc(h.detail)}</small>` : ""}</span>
-          </button>`;
+            <span style="flex:1"><b>${esc(h.title)}</b>${hwSpec(h) ? `<span class="spec">${hwSpec(h)}</span>` : ""}${h.note ? `<span class="note">✔ ${esc(h.note)}</span>` : ""}${h.detail ? `<small>${esc(h.detail)}</small>` : ""}
+              ${steps.length ? `<span class="howto-btn" data-how="${h.id}">운동 방법 ${open ? "접기 ▴" : "보기 ▾"}</span>` : ""}</span>
+          </div>${open && steps.length ? `<div class="howto"><ol>${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol></div>` : ""}`;
         }).join("")}</div>
 
         <div class="card">
@@ -402,6 +415,10 @@ async function MemberView(token) {
     `;
 
     $$("[data-day]").forEach(b => b.onclick = () => { st.day = b.dataset.day; loadForm(); render(); });
+    $$("[data-how]").forEach(b => b.onclick = e => {
+      e.stopPropagation();
+      const id = b.dataset.how; st.open.has(id) ? st.open.delete(id) : st.open.add(id); render();
+    });
     $$("[data-hw]").forEach(b => b.onclick = async () => {
       const id = b.dataset.hw, k = id + "|" + st.day, on = !logSet.has(k);
       on ? logSet.add(k) : logSet.delete(k);
@@ -575,13 +592,14 @@ async function TrainerView() {
   }
 
   /* ----- 회원 상세 ----- */
-  const FORM0 = () => ({ title: "", sets: 3, reps: 15, unit: "회", note: "", days: [] });
+  const FORM0 = () => ({ title: "", sets: 3, reps: 15, unit: "회", note: "", how_to: "", days: [], editId: null, memberId: null });
   let form = FORM0();
   const NOTE_QUICK = ["허리 꺾지 않기", "천천히 내리기", "호흡 멈추지 않기", "통증 있으면 중단", "양쪽 다 하기"];
   function renderDetail() {
     const m = T.members.find(x => x.id === T.sel);
     if (!m) { T.sel = null; return renderHome(); }
     const hs = hwsOf(m.id), reps = repsOf(m.id), link = memberLink(m), t = today();
+    if (form.memberId !== m.id || (form.editId && !hs.some(h => h.id === form.editId))) { form = FORM0(); form.memberId = m.id; }
     const dates = [...Array(14)].map((_, i) => ymd(addDays(new Date(), i - 13)));
     const repByDay = new Map(reps.map(r => [r.report_date, r]));
     const kakao = `${m.name}님, 집에서 하는 운동 숙제예요 💪\n운동하고 아래 링크에서 체크만 해주시면 제가 바로 확인할게요!\n👉 ${link}`;
@@ -598,12 +616,16 @@ async function TrainerView() {
           <section class="card">
             <div class="sec-title"><h2>숙제 목록</h2><span class="muted small">${hs.length}개</span></div>
             ${hs.length ? hs.map(h => `
-              <div class="hwrow">
-                <div><b>${esc(h.title)}</b> <span class="chip">${daysLabel(h.days)}</span>${hwSpec(h) ? `<div class="spec" style="font-size:14px;display:block">${hwSpec(h)}</div>` : ""}${h.note ? `<div class="muted small">✔ ${esc(h.note)}</div>` : ""}${h.detail ? `<div class="muted small">${esc(h.detail)}</div>` : ""}</div>
-                <button class="btn ghost" data-delhw="${h.id}" style="padding:7px 10px;font-size:13px">삭제</button>
+              <div class="hwrow ${form.editId === h.id ? "editing" : ""}">
+                <div style="min-width:0"><b>${esc(h.title)}</b> <span class="chip">${daysLabel(h.days)}</span>${hwSpec(h) ? `<div class="spec" style="font-size:14px;display:block">${hwSpec(h)}</div>` : ""}${h.note ? `<div class="muted small">✔ ${esc(h.note)}</div>` : ""}${h.detail ? `<div class="muted small">${esc(h.detail)}</div>` : ""}${howSteps(h.how_to).length ? `<ol>${howSteps(h.how_to).map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}</div>
+                <div class="row" style="flex:none">
+                  <button class="btn ghost" data-edithw="${h.id}" style="padding:7px 10px;font-size:13px">수정</button>
+                  <button class="btn ghost" data-delhw="${h.id}" style="padding:7px 10px;font-size:13px">삭제</button>
+                </div>
               </div>`).join("") : `<p class="muted small" style="padding:6px 0 10px">아직 숙제가 없어요. 아래에서 추가하세요.</p>`}
 
-            <div class="stack" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+            <div class="stack" id="hwForm" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+              <div class="form-title"><h2 style="font-size:15px">${form.editId ? `✏️ '${esc(hs.find(h => h.id === form.editId)?.title || "")}' 수정 중` : "＋ 새 숙제 추가"}</h2></div>
               <div>
                 <div class="lbl">운동 이름</div>
                 <input class="field" id="fTitle" placeholder="예: 글루트 브릿지" value="${esc(form.title)}">
@@ -625,10 +647,18 @@ async function TrainerView() {
                 <div class="quick">${NOTE_QUICK.map(q => `<button data-quick="${esc(q)}">+ ${esc(q)}</button>`).join("")}</div>
               </div>
               <div>
+                <div class="lbl">운동 방법 <span style="font-weight:400">(선택 · 한 줄에 한 단계)</span></div>
+                <textarea class="field" id="fHow" rows="4" placeholder="예)&#10;바닥에 누워 무릎을 세운다&#10;엉덩이를 들어 올려 2초 멈춘다&#10;천천히 내린다">${esc(form.how_to)}</textarea>
+                <div class="muted small" style="margin-top:4px">회원 화면에는 1, 2, 3 번호가 붙어서 보여요.</div>
+              </div>
+              <div>
                 <div class="muted small" style="margin-bottom:6px">하는 요일 — 안 고르면 <b>매일</b></div>
                 <div class="days">${WEEK_ORDER.map(d => `<button data-dow="${d}" class="${form.days.includes(d) ? "on" : ""}">${DOW[d]}</button>`).join("")}</div>
               </div>
-              <button class="btn primary big" id="addHw" style="font-size:16px;padding:14px">숙제 추가</button>
+              <div class="row">
+                <button class="btn primary big" id="addHw" style="font-size:16px;padding:14px">${form.editId ? "수정 저장" : "숙제 추가"}</button>
+                ${form.editId ? `<button class="btn big" id="cancelEdit" style="font-size:16px;padding:14px;width:auto;flex:none">취소</button>` : ""}
+              </div>
             </div>
           </section>
 
@@ -691,6 +721,7 @@ async function TrainerView() {
       form.unit = b.dataset.unit;
       $$("[data-unit]").forEach(x => x.classList.toggle("on", x === b));
     });
+    $("#fHow").oninput = e => form.how_to = e.target.value;
     const noteIn = $("#fNote");
     noteIn.oninput = e => form.note = e.target.value;
     $$("[data-quick]").forEach(b => b.onclick = () => {
@@ -707,12 +738,24 @@ async function TrainerView() {
     $("#addHw").onclick = async () => {
       const title = form.title.trim(); if (!title) { $("#fTitle").focus(); return; }
       $("#addHw").disabled = true;
+      const fields = { title, sets: form.sets || null, reps: form.reps || null, unit: form.unit, note: form.note.trim(), how_to: form.how_to.trim(), days: form.days.slice().sort((a, b) => a - b) };
+      const editing = form.editId;
       try {
-        await api.addHomework(m.id, { title, sets: form.sets || null, reps: form.reps || null, unit: form.unit, note: form.note.trim(), days: form.days.slice().sort(), sort: hs.length });
-        form = FORM0();
-        await load(); render(); toast("숙제를 추가했어요");
-      } catch (e) { toast("추가하지 못했어요"); $("#addHw").disabled = false; }
+        if (editing) await api.updateHomework(editing, fields);
+        else await api.addHomework(m.id, { ...fields, sort: hs.length });
+        form = FORM0(); form.memberId = m.id;
+        await load(); render(); toast(editing ? "수정했어요" : "숙제를 추가했어요");
+      } catch (e) { toast(editing ? "수정하지 못했어요" : "추가하지 못했어요"); $("#addHw").disabled = false; }
     };
+    if ($("#cancelEdit")) $("#cancelEdit").onclick = () => { form = FORM0(); form.memberId = m.id; render(); };
+    $$("[data-edithw]").forEach(b => b.onclick = () => {
+      const h = hs.find(x => x.id === b.dataset.edithw); if (!h) return;
+      form = { title: h.title, sets: h.sets || 0, reps: h.reps || 0, unit: h.unit || "회",
+               note: h.note || (h.detail || ""), how_to: h.how_to || "", days: (h.days || []).slice(), editId: h.id, memberId: m.id };
+      render();
+      $("#hwForm").scrollIntoView({ behavior: "smooth", block: "start" });
+      $("#fTitle").focus({ preventScroll: true });
+    });
     $$("[data-delhw]").forEach(b => b.onclick = async () => {
       try { await api.deleteHomework(b.dataset.delhw); await load(); render(); toast("숙제를 뺐어요 (기록은 남아요)"); }
       catch (e) { toast("삭제하지 못했어요"); }
