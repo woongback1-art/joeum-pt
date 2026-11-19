@@ -478,14 +478,25 @@ async function TrainerView() {
     const week = [...Array(7)].map((_, i) => ymd(addDays(new Date(), i - 6)));
     let withHw = 0, full = 0, pending = 0;
     const pool = T.members.filter(m => !T.mine || m.trainer_id === me?.id);
-    const active = pool.filter(m => hwsOf(m.id).length || repsOf(m.id).length);
-    const q = T.q.trim();
-    const rows = active.map(m => {
+    const rows = pool.map(m => {
       const hs = hwsOf(m.id), s = dayStatus(hs, T.logSet, t);
       if (s.total) { withHw++; s.status === "full" ? full++ : pending++; }
       const last = repsOf(m.id)[0];
       return { m, hs, s, last };
-    });
+    }).sort((a, b) => (b.hs.length > 0) - (a.hs.length > 0) || a.m.name.localeCompare(b.m.name, "ko"));
+    const rowHtml = ({ m, hs, s, last }) => hs.length ? `
+            <button class="mrow" data-m="${m.id}">
+              <div><div class="nm">${esc(m.name)}</div>${m.goal || m.memo ? `<div class="memo">${esc(m.goal || m.memo)}</div>` : ""}</div>
+              <div style="text-align:right">
+                ${s.total ? `<span class="chip ${s.status}">오늘 ${s.done}/${s.total}</span>` : `<span class="chip">오늘 쉬는 날</span>`}
+                <div class="dots" style="margin-top:8px;justify-content:flex-end">${week.map(d => `<i class="${dayStatus(hs, T.logSet, d).status} ${d === t ? "today" : ""}" title="${fmtDate(d)}"></i>`).join("")}</div>
+              </div>
+              ${last ? `<div class="last">${last.feeling ? FEEL[last.feeling].e + " " : ""}<b>${relDay(last.report_date)}</b> 보고${last.comment ? ` · “${esc(last.comment)}”` : ""}</div>` : ""}
+            </button>` : `
+            <button class="mrow" data-m="${m.id}" style="padding:11px 16px">
+              <div><div class="nm" style="font-size:15px">${esc(m.name)}</div>${m.goal || m.memo ? `<div class="memo">${esc(m.goal || m.memo)}</div>` : ""}</div>
+              <div style="text-align:right;align-self:center"><span class="chip">숙제 주기 →</span></div>
+            </button>`;
 
     app.innerHTML = `
       ${api.mode === "demo" ? `<div class="banner">체험 모드예요 — 데이터가 이 브라우저에만 저장돼요. 주소 끝의 ?demo 를 지우면 실제 센터 데이터로 열려요.</div>` : ""}
@@ -505,25 +516,15 @@ async function TrainerView() {
 
       <div class="grid2">
         <section>
-          <div class="sec-title"><h2>숙제 중인 회원</h2>
+          <div class="sec-title"><h2>회원 <span class="muted small" style="font-weight:500">${pool.length}명</span></h2>
             ${me?.role === "trainer" || T.members.some(m => m.trainer_id === me?.id) ? `<div class="seg" style="margin:0;width:150px">
               <button data-mine="1" class="${T.mine ? "on" : ""}">내 회원</button><button data-mine="0" class="${!T.mine ? "on" : ""}">전체</button>
-            </div>` : `<span class="muted small">최근 7일</span>`}
+            </div>` : ""}
           </div>
           <div class="card" style="margin-bottom:10px;padding:12px">
-            <input class="field" id="q" placeholder="🔍 숙제 줄 회원 이름 검색" value="${esc(T.q)}" autocomplete="off">
-            <div id="qres"></div>
+            <input class="field" id="q" placeholder="🔍 회원 이름 검색" value="${esc(T.q)}" autocomplete="off">
           </div>
-          ${rows.length ? rows.map(({ m, hs, s, last }) => `
-            <button class="mrow" data-m="${m.id}">
-              <div><div class="nm">${esc(m.name)}</div>${m.memo ? `<div class="memo">${esc(m.memo)}</div>` : ""}</div>
-              <div style="text-align:right">
-                ${!hs.length ? `<span class="chip">숙제 없음</span>` : s.total ? `<span class="chip ${s.status}">오늘 ${s.done}/${s.total}</span>` : `<span class="chip">오늘 쉬는 날</span>`}
-                <div class="dots" style="margin-top:8px;justify-content:flex-end">${week.map(d => `<i class="${dayStatus(hs, T.logSet, d).status} ${d === t ? "today" : ""}" title="${fmtDate(d)}"></i>`).join("")}</div>
-              </div>
-              ${last ? `<div class="last">${last.feeling ? FEEL[last.feeling].e + " " : ""}<b>${relDay(last.report_date)}</b> 보고${last.comment ? ` · “${esc(last.comment)}”` : ""}</div>` : ""}
-            </button>`).join("")
-          : `<div class="card empty">아직 숙제를 준 회원이 없어요.<br>위에서 회원 이름을 검색해서 숙제를 넣어보세요.</div>`}
+          <div id="mlist"></div>
         </section>
 
         <section>
@@ -543,23 +544,18 @@ async function TrainerView() {
     $("#reload").onclick = refresh;
     if ($("#logout")) $("#logout").onclick = async () => { await api.signOut(); LoginView(); };
     const openMember = id => { T.sel = id; T.q = ""; render(); window.scrollTo(0, 0); };
-    // 검색 결과만 다시 그림 (입력창은 그대로 두어 한글 입력이 끊기지 않게)
-    const renderResults = () => {
-      const q = T.q.trim(), box = $("#qres");
-      if (!q) { box.innerHTML = ""; return; }
-      const found = T.members.filter(m => m.name.includes(q)).slice(0, 8);
-      box.innerHTML = `<div style="margin-top:8px">${found.length ? found.map(m => `
-        <button class="hwrow" data-m="${m.id}" style="width:100%;text-align:left">
-          <span><b>${esc(m.name)}</b> ${m.goal || m.memo ? `<span class="muted small">${esc(m.goal || m.memo)}</span>` : ""}</span>
-          <span class="chip">${hwsOf(m.id).length ? `숙제 ${hwsOf(m.id).length}개` : "숙제 주기 →"}</span>
-        </button>`).join("") : `<p class="muted small" style="padding:6px 0">'${esc(q)}' 회원이 없어요. 회원 등록은 센터 관리 프로그램에서 해주세요.</p>`}</div>`;
+    // 목록만 다시 그림 (입력창은 그대로 두어 한글 입력이 끊기지 않게)
+    const renderList = () => {
+      const q = T.q.trim(), box = $("#mlist");
+      const list = q ? rows.filter(r => r.m.name.includes(q)) : rows;
+      box.innerHTML = list.length ? list.map(rowHtml).join("")
+        : `<div class="card empty">${q ? `'${esc(q)}' 회원이 없어요.<br>회원 등록은 센터 관리 프로그램에서 해주세요.` : T.mine ? "담당 회원이 없어요. '전체'를 눌러보세요." : "등록된 회원이 없어요."}</div>`;
       $$("[data-m]", box).forEach(b => b.onclick = () => openMember(b.dataset.m));
     };
     const qi = $("#q");
-    qi.oninput = () => { T.q = qi.value; renderResults(); };
-    renderResults();
+    qi.oninput = () => { T.q = qi.value; renderList(); };
+    renderList();
     $$("[data-mine]").forEach(b => b.onclick = () => { T.mine = b.dataset.mine === "1"; render(); });
-    $$(".mrow[data-m]").forEach(b => b.onclick = () => openMember(b.dataset.m));
   }
 
   /* ----- 회원 상세 ----- */
