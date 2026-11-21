@@ -449,6 +449,13 @@ export class MockApi {
       const p = this.db.profiles.find((x) => x.id === d.trainer_id);
       return { member: m ? m.name : '', trainer: p ? p.name : '', start_date: d.start_date, days: d.days, memo: d.memo || '', updated_at: d.updated_at };
     }
+    if (fn === 'save_shared_diet') {
+      const d = (this.db.diets || []).find((x) => x.share_token && x.share_token === args.p_token);
+      if (!d) return false;
+      d.days = args.p_days; d.member_updated_at = new Date().toISOString(); d.updated_at = d.member_updated_at;
+      this._save();
+      return true;
+    }
     if (fn === 'update_my_profile') {
       const me = this._me();
       if (args.p_name) me.name = args.p_name;
