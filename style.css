@@ -206,7 +206,7 @@ button.blk { pointer-events: auto; cursor: pointer; text-align: left; font: inhe
 .dt-who { font-size: 13px; text-align: right; line-height: 1.7; }
 .dt-who b { display: inline-block; min-width: 90px; border-bottom: 1px solid #999; text-align: center; margin-left: 6px; }
 .dt-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.dt { width: 100%; min-width: 860px; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.dt { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
 .dt th, .dt td { border: 1px solid #333; padding: 4px; vertical-align: top; }
 .dt thead th { text-align: center; font-weight: 700; padding: 6px 4px; background: #faf7f1; }
 .dt .dt-dow { display: block; font-weight: 500; font-size: 11px; color: #666; }
@@ -247,7 +247,8 @@ button.blk { pointer-events: auto; cursor: pointer; text-align: left; font: inhe
   .diet-sheet.ro .dt-scroll { display: block !important; }
   .diet-sheet.ro .dt-cards { display: none !important; }
 }
-.dday-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.dday-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+.dday-tabs .dday { flex: 1 0 46px; }
 .dday { position: relative; display: flex; flex-direction: column; align-items: center; padding: 6px 0; border: 1px solid #ddd5c6; border-radius: 8px; background: #fff; font: inherit; font-size: 12px; line-height: 1.3; color: inherit; min-height: 44px; }
 .dday b { font-size: 13px; }
 .dday.on { background: #23634A; border-color: #23634A; color: #fff; }

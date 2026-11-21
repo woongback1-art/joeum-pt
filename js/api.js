@@ -447,7 +447,7 @@ export class MockApi {
       if (!d) return null;
       const m = this.db.members.find((x) => x.id === d.member_id);
       const p = this.db.profiles.find((x) => x.id === d.trainer_id);
-      return { member: m ? m.name : '', trainer: p ? p.name : '', start_date: d.start_date, days: d.days, memo: d.memo || '', updated_at: d.updated_at };
+      return { member: m ? m.name : '', trainer: p ? p.name : '', start_date: d.start_date, num_days: d.num_days || 7, days: d.days, memo: d.memo || '', updated_at: d.updated_at };
     }
     if (fn === 'save_shared_diet') {
       const d = (this.db.diets || []).find((x) => x.share_token && x.share_token === args.p_token);
