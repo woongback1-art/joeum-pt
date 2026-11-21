@@ -369,16 +369,16 @@ function dietMemberView() {
   const rows = S.dietRows.rows;
   const d = S.diet;
   const weeks = rows.length ? '<div class="card no-print"><div class="small b mb8">저장된 식단표</div><div class="row gap6 wrap">' + rows.map((r) =>
-    '<button type="button" class="chip' + (d && d.id === r.id ? ' on dark' : '') + '" data-act="openDiet" data-id="' + r.id + '" aria-pressed="' + (!!d && d.id === r.id) + '">' + dietRange(r.start_date, dietN(r)) + (r.share_token ? ' · 보냄' : '') + '</button>').join('') + '</div></div>' : '';
+    '<button type="button" class="chip' + (d && d.id === r.id ? ' on dark' : '') + '" data-act="openDiet" data-id="' + r.id + '" aria-pressed="' + (!!d && d.id === r.id) + '">' + dietRange(r.start_date, dietN(r)) + '' + '</button>').join('') + '</div></div>' : '';
   if (!d) return '<div class="stack16">' + head + weeks + '<div class="card muted">아직 식단표가 없어요. <b>+ 새 식단표</b>를 눌러 시작하세요.</div></div>';
   const editor = '<div class="card stack">' +
     '<div class="row-between wrap gap8 no-print"><div class="row gap8 wrap"><label for="diet-start" class="small b">시작 날짜</label><input id="diet-start" type="date" data-dietstart="1" value="' + esc(d.start_date) + '" style="width:auto"><label for="diet-end" class="small b">끝 날짜</label><input id="diet-end" type="date" data-dietend="1" min="' + esc(d.start_date) + '" max="' + esc(addDays(d.start_date, DIET_MAX_DAYS - 1)) + '" value="' + esc(addDays(d.start_date, dietN(d) - 1)) + '" style="width:auto"><span class="muted small">' + dietRange(d.start_date, dietN(d)) + '</span></div>' +
     '<span id="diet-dirty" class="small ' + (S.dietDirty ? 'danger-text' : 'muted') + '">' + (S.dietDirty ? '저장 안 한 내용이 있어요' : d.id ? '저장됨' : '') + '</span></div>' +
-    (d.member_updated_at ? '<div class="form-ok small no-print">회원이 ' + md(localDate(d.member_updated_at)) + ' ' + localTime(d.member_updated_at) + '에 마지막으로 적었어요.</div>' : d.share_token ? '<div class="muted small no-print">링크를 보냈어요. 회원이 아직 적지 않았어요.</div>' : '<div class="muted small no-print">빈 식단표를 만들어 <b>회원에게 보내기</b>를 누르면, 회원이 링크에서 직접 적어요. 선생님은 여기서 보고 코멘트를 달면 돼요.</div>') +
+    (d.member_updated_at ? '<div class="form-ok small no-print">회원이 ' + md(localDate(d.member_updated_at)) + ' ' + localTime(d.member_updated_at) + '에 마지막으로 적었어요.</div>' : '<div class="muted small no-print">회원은 <b>식단 링크</b> 하나로 계속 적어요. 새 식단표를 만들면 같은 링크에 자동으로 나와요. 링크는 처음 한 번만 보내면 돼요.</div>') +
     dietSheet(d, !S.printing, m.name) +
     '<div class="no-print"><label for="diet-memo">선생님 코멘트 (회원에게 같이 보여요)</label><textarea id="diet-memo" data-dietmemo="1" rows="3" placeholder="예: 단백질이 부족해요. 점심에 계란이나 두부를 더해 보세요.">' + esc(d.memo || '') + '</textarea></div>' +
     '<div class="row gap8 wrap no-print"><button type="button" class="btn btn-primary" data-act="saveDiet"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '저장') + '</button>' +
-    '<button type="button" class="btn" data-act="shareDiet"' + (S.busy ? ' disabled' : '') + '>회원에게 보내기' + (d.share_token ? ' (링크 있음)' : '') + '</button>' +
+    '<button type="button" class="btn" data-act="shareDiet"' + (S.busy ? ' disabled' : '') + '>회원 식단 링크 보내기</button>' +
     '<button type="button" class="btn" data-act="printDiet">인쇄 · PDF 저장</button>' +
     (d.id ? '<button type="button" class="btn danger-text" data-act="deleteDiet">삭제</button>' : '<button type="button" class="btn" data-act="cancelDiet">취소</button>') + '</div>' +
     '</div>';
@@ -424,8 +424,10 @@ async function saveDietNow() {
   return S.diet;
 }
 
-function dietShareText(memberName, d, url) {
-  return '[' + CENTER_NAME + ' 식단표] ' + memberName + ' 회원님, ' + dietRange(d.start_date, dietN(d)).replace(' · ', ' (') + ') 식단을 아래 링크에 매일 적어 주세요. 드신 음식과 시간만 적으면 돼요.\n' + (d.memo ? '\n선생님 코멘트: ' + d.memo + '\n' : '') + '\n식단 적기: ' + url;
+const newToken = () => (uid() + uid()).replace(/-/g, '');
+const dietLink = (m) => location.origin + location.pathname + '?m=' + encodeURIComponent(m.diet_token);
+function dietShareText(memberName, url) {
+  return '[' + CENTER_NAME + ' 식단표] ' + memberName + ' 회원님 식단 링크예요.\n드신 음식과 시간을 매일 적어 주세요. 적으면 자동으로 저장돼요.\n이 링크 하나로 계속 쓰시면 되니, 즐겨찾기나 홈 화면에 추가해 두세요.\n\n식단 적기: ' + url;
 }
 
 function dietGuard(fn) {
@@ -454,12 +456,15 @@ function sharedDietView() {
   const sh = S.shared;
   let body;
   if (sh.loading) body = '<div class="center-screen" style="min-height:40vh"><div class="spinner" aria-label="불러오는 중"></div></div>';
-  else if (!sh.data) body = '<div class="card"><h1 class="h2">식단표를 찾을 수 없어요</h1><p class="muted">링크가 잘못됐거나, 선생님이 공유를 끈 식단표예요.</p></div>';
+  else if (sh.mode === 'member' && sh.found && !sh.data) body = '<div class="card"><h1 class="h2">' + esc(sh.memberName) + ' 회원님 식단표</h1><p class="muted">아직 선생님이 식단표를 만들지 않았어요. 만들어지면 이 링크에서 바로 적을 수 있어요.</p></div>';
+  else if (!sh.data) body = '<div class="card"><h1 class="h2">식단표를 찾을 수 없어요</h1><p class="muted">링크가 잘못됐거나, 선생님이 링크를 바꿨어요. 선생님께 새 링크를 받아 주세요.</p></div>';
   else {
     const d = S.diet;
+    const others = sh.mode === 'member' && sh.list.length > 1 ? '<div class="card no-print"><div class="small b mb8">다른 기간 식단표</div><div class="row gap6 wrap">' + sh.list.map((x) => '<button type="button" class="chip' + (x.id === d.id ? ' on dark' : '') + '" data-act="pickMemberDiet" data-id="' + x.id + '" aria-pressed="' + (x.id === d.id) + '">' + dietRange(x.start_date, dietN(x)) + '</button>').join('') + '</div></div>' : '';
     const narrow = window.matchMedia('(max-width: 760px)').matches;
     const status = '<span id="diet-dirty" class="small ' + (S.dietDirty ? 'danger-text' : 'muted') + '" role="status">' + (sh.saving ? '저장 중…' : S.dietDirty ? '저장 안 한 내용이 있어요' : sh.savedAt ? '저장됨 ' + sh.savedAt : '') + '</span>';
     body = '<header class="share-head no-print"><div class="brand-lg">' + esc(CENTER_NAME) + '</div><h1 class="h1">' + esc(d.member) + ' 회원님 식단표</h1><div class="muted">' + dietRange(d.start_date, dietN(d)) + ' · 드신 음식과 시간을 적어 주세요. 적으면 자동으로 저장돼요.</div></header>' +
+      others +
       (d.memo ? '<div class="dt-memo no-print"><b>선생님 코멘트</b><p class="pre">' + esc(d.memo) + '</p></div>' : '') +
       '<section class="card">' + (narrow && !S.printing ? dietDayEditor(d) : dietSheet(d, !S.printing, d.member)) + '</section>' +
       '<div class="row gap8 center-row no-print share-save"><button type="button" class="btn btn-primary" data-act="saveSharedDiet"' + (sh.saving ? ' disabled' : '') + '>저장</button>' + status + '</div>' +
@@ -477,7 +482,7 @@ async function saveSharedDiet() {
   syncDietInputs();
   sh.saving = true; render();
   try {
-    const ok = await api.rpc('save_shared_diet', { p_token: sh.token, p_days: S.diet.days });
+    const ok = sh.mode === 'member' ? await api.rpc('save_member_diet', { p_token: sh.token, p_diet_id: S.diet.id, p_days: S.diet.days }) : await api.rpc('save_shared_diet', { p_token: sh.token, p_days: S.diet.days });
     if (!ok) throw new Error('저장하지 못했어요. 선생님이 링크를 껐을 수 있어요.');
     S.dietDirty = false;
     const n = new Date(); sh.savedAt = pad(n.getHours()) + ':' + pad(n.getMinutes());
@@ -496,11 +501,33 @@ async function loadSharedDiet(token) {
     S.diet = Object.assign({}, d, { days: fitDietDays(d.days, dietN(d)) });
     const idx = daysBetween(d.start_date, todayStr());
     S.dietDay = idx >= 0 && idx < dietN(d) ? idx : 0;
-    window.addEventListener('resize', () => render());
   }
   S.shared.loading = false;
   renderNow();
 }
+
+async function loadMemberDiet(token, dietId) {
+  S.shared = { kind: 'diet', mode: 'member', token, loading: !S.shared, data: null, list: [], memberName: '' };
+  renderNow();
+  let res = null;
+  try { res = await api.rpc('get_member_diet', { p_token: token, p_diet_id: dietId || null }); } catch (e) { console.error(e); }
+  S.shared.loading = false;
+  if (res) {
+    S.shared.memberName = res.member;
+    S.shared.list = res.list || [];
+    S.shared.found = true;
+    if (res.diet) {
+      const d = res.diet;
+      S.shared.data = d;
+      S.diet = Object.assign({}, d, { member: res.member, days: fitDietDays(d.days, dietN(d)) });
+      const idx = daysBetween(d.start_date, todayStr());
+      S.dietDay = idx >= 0 && idx < dietN(d) ? idx : 0;
+    }
+  }
+  S.dietDirty = false;
+  renderNow();
+}
+window.addEventListener('resize', () => { if (S.shared && S.shared.kind === 'diet') render(); });
 
 // ---------- 로그인 ----------
 function authView() {
@@ -1335,13 +1362,13 @@ function modalView() {
     if (b) body += '<button type="button" class="link small left danger-text" data-act="deleteBlock" data-id="' + b.id + '">이 고정 스케줄 삭제</button>';
   } else if (md_.type === 'share') {
     title = md_.kind === 'diet' ? '회원에게 식단표 보내기' : '회원에게 일지 보내기';
-    body = '<p class="small">' + esc(md_.memberName) + ' 회원님 전용 링크예요. ' + (md_.kind === 'diet' ? '회원이 로그인 없이 이 링크에서 식단을 직접 적고 저장해요.' : '로그인 없이 운동 내용과 영상을 볼 수 있어요.') + '</p>' +
+    body = '<p class="small">' + esc(md_.memberName) + ' 회원님 전용 링크예요. ' + (md_.kind === 'diet' ? '회원마다 하나뿐인 고정 링크예요. 회원은 로그인 없이 이 링크로 계속 식단을 적어요. 새 식단표를 만들면 같은 링크에 자동으로 나와요.' : '로그인 없이 운동 내용과 영상을 볼 수 있어요.') + '</p>' +
       '<label for="share-url">링크</label><input id="share-url" readonly value="' + esc(md_.url) + '">' +
       '<label for="share-text">보낼 글 (고쳐도 돼요)</label><textarea id="share-text" rows="8">' + esc(md_.text) + '</textarea>' +
       '<div class="row gap8 wrap">' + (navigator.share ? '<button type="button" class="btn btn-primary grow" data-act="shareNow">카톡 등으로 보내기</button>' : '') +
       '<button type="button" class="btn grow" data-act="copyShare">글+링크 복사</button></div>' +
       '<button type="button" class="link small left" data-act="openShareLink">회원이 보는 화면 미리보기</button>' +
-      '<button type="button" class="link small left danger-text" data-act="' + (md_.kind === 'diet' ? 'unshareDiet' : 'unshareJournal') + '" data-id="' + md_.journalId + '">링크 끄기 (보낸 링크로 더는 못 봐요)</button>';
+      '<button type="button" class="link small left danger-text" data-act="' + (md_.kind === 'diet' ? 'unshareDiet' : 'unshareJournal') + '" data-id="' + md_.journalId + '">' + (md_.kind === 'diet' ? '링크 바꾸기 (예전 링크는 더 이상 안 열려요)' : '링크 끄기 (보낸 링크로 더는 못 봐요)') + '</button>';
   } else if (md_.type === 'video') {
     title = '운동 영상';
     body = md_.url ? '<video src="' + esc(md_.url) + '" controls playsinline autoplay style="width:100%;max-height:70vh;background:#000;border-radius:8px"></video>' : '<p class="muted">영상을 불러오는 중…</p>';
@@ -1563,15 +1590,23 @@ const actions = {
   shareDiet: () => run(async () => {
     let d = S.diet;
     if (!d.id || S.dietDirty) d = await saveDietNow();
-    if (!d.share_token) { await api.update('diets', d.id, { share_token: (uid() + uid()).replace(/-/g, '') }); await loadDietRows(d.member_id, d.id); d = S.diet; }
-    const m = memberById(d.member_id);
-    const url = location.origin + location.pathname + '?d=' + encodeURIComponent(d.share_token);
-    S.modal = { type: 'share', kind: 'diet', journalId: d.id, memberName: m ? m.name : '', url, text: dietShareText(m ? m.name : '', d, url) };
+    let m = memberById(d.member_id);
+    if (!m.diet_token) { await api.update('members', m.id, { diet_token: newToken() }); await loadCore(); m = memberById(d.member_id); }
+    if (!m.diet_token) throw new Error('식단 링크를 만들지 못했어요. Supabase에 supabase/diet_v4.sql 실행이 필요해요.');
+    const url = dietLink(m);
+    S.modal = { type: 'share', kind: 'diet', journalId: m.id, memberName: m.name, url, text: dietShareText(m.name, url) };
   }),
-  unshareDiet: (d) => run(async () => { await api.update('diets', d.id, { share_token: null }); S.modal = null; await loadDietRows(S.dMember, d.id); }, '링크를 껐어요. 보낸 링크로는 더 이상 볼 수 없어요.'),
+  unshareDiet: (d) => confirmBox('식단 링크 바꾸기', '새 링크를 만들면 예전에 보낸 링크로는 더 이상 열 수 없어요. 회원에게 새 링크를 다시 보내야 해요.', '새 링크 만들기', async () => {
+    await api.update('members', d.id, { diet_token: newToken() });
+    await loadCore();
+    const m = memberById(d.id);
+    const url = dietLink(m);
+    setTimeout(() => { S.modal = { type: 'share', kind: 'diet', journalId: m.id, memberName: m.name, url, text: dietShareText(m.name, url) }; render(); }, 0);
+  }) || (S.modal.okMsg = '새 링크를 만들었어요. 회원에게 다시 보내 주세요.'),
   deleteDiet: () => { const d = S.diet; confirmBox('식단표 삭제', dietRange(d.start_date, dietN(d)) + ' 식단표를 지울까요? 되돌릴 수 없어요.', '삭제', async () => { await api.remove('diets', d.id); S.dietDirty = false; S.diet = null; await loadDiets(); }); },
   dietDay: (d) => { syncDietInputs(); S.dietDay = Number(d.v); render(); window.scrollTo(0, 0); },
   saveSharedDiet: () => saveSharedDiet(),
+  pickMemberDiet: async (d) => { if (S.dietDirty) await saveSharedDiet(); await loadMemberDiet(S.shared.token, d.id); window.scrollTo(0, 0); },
   printDiet: () => { syncDietInputs(); S.printing = true; renderNow(); setTimeout(() => { window.print(); S.printing = false; render(); }, 50); },
 
   // 달력
@@ -2006,6 +2041,8 @@ document.addEventListener('keydown', (ev) => {
 (async function boot() {
   const shareToken = params.get('j');
   if (shareToken) { await loadShared(shareToken); return; }
+  const memberDietToken = params.get('m');
+  if (memberDietToken) { await loadMemberDiet(memberDietToken); return; }
   const dietToken = params.get('d');
   if (dietToken) { await loadSharedDiet(dietToken); return; }
   try {

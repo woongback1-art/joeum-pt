@@ -456,6 +456,23 @@ export class MockApi {
       this._save();
       return true;
     }
+    if (fn === 'get_member_diet') {
+      const m = this.db.members.find((x) => x.diet_token && x.diet_token === args.p_token);
+      if (!m) return null;
+      const all = (this.db.diets || []).filter((x) => x.member_id === m.id).sort((a, b) => (a.start_date < b.start_date ? 1 : -1));
+      const t = new Date(); const today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+      const end = (x) => { const d = new Date(x.start_date + 'T00:00:00'); d.setDate(d.getDate() + (x.num_days || 7) - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+      const cur = (args.p_diet_id && all.find((x) => x.id === args.p_diet_id)) || all.find((x) => x.start_date <= today && today <= end(x)) || all[0] || null;
+      return { member: m.name, list: all.map((x) => ({ id: x.id, start_date: x.start_date, num_days: x.num_days || 7 })), diet: cur ? { id: cur.id, start_date: cur.start_date, num_days: cur.num_days || 7, days: cur.days, memo: cur.memo || '' } : null };
+    }
+    if (fn === 'save_member_diet') {
+      const m = this.db.members.find((x) => x.diet_token && x.diet_token === args.p_token);
+      const d = m && (this.db.diets || []).find((x) => x.id === args.p_diet_id && x.member_id === m.id);
+      if (!d) return false;
+      d.days = args.p_days; d.member_updated_at = new Date().toISOString(); d.updated_at = d.member_updated_at;
+      this._save();
+      return true;
+    }
     if (fn === 'update_my_profile') {
       const me = this._me();
       if (args.p_name) me.name = args.p_name;
