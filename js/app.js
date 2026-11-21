@@ -80,6 +80,7 @@ const S = {
   jFilter: 'all',
   jSearch: '',
   jMember: null,
+  diets: null, dietErr: '', dMember: null, dSearch: '', dFilter: 'all', dietRows: null, diet: null, dietDirty: false,
   jDate: null,
   jDetail: null,
   salesMonth: todayStr().slice(0, 7),
@@ -155,10 +156,10 @@ function renderNow() {
   const focusId = active && active.id ? active.id : null;
   const sel = focusId && active.setSelectionRange && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
   const scrollers = {};
-  document.querySelectorAll('[data-scroll-key]').forEach((el) => { scrollers[el.dataset.scrollKey] = el.scrollTop; });
+  document.querySelectorAll('[data-scroll-key]').forEach((el) => { scrollers[el.dataset.scrollKey] = [el.scrollTop, el.scrollLeft]; });
   const winY = window.scrollY;
   $app.innerHTML = view();
-  document.querySelectorAll('[data-scroll-key]').forEach((el) => { if (scrollers[el.dataset.scrollKey] != null) el.scrollTop = scrollers[el.dataset.scrollKey]; });
+  document.querySelectorAll('[data-scroll-key]').forEach((el) => { const v = scrollers[el.dataset.scrollKey]; if (v != null) { el.scrollTop = v[0]; el.scrollLeft = v[1]; } });
   window.scrollTo(0, winY);
   syncHomeworkFrame();
   if (focusId) {
@@ -227,7 +228,7 @@ async function run(fn, okMsg) {
 }
 
 function view() {
-  if (S.shared) return sharedView();
+  if (S.shared) return S.shared.kind === 'diet' ? sharedDietView() : sharedView();
   if (S.booting) return '<div class="center-screen"><div class="spinner" aria-label="불러오는 중"></div></div>';
   if (!S.user || S.authView === 'newpw') return authView();
   if (!S.me || S.me.role === 'pending') return pendingView();
@@ -288,6 +289,165 @@ function shareText(memberName, startsAt, items, url, cond, inten) {
   return '[' + CENTER_NAME + ' 수업일지] ' + when + ' ' + memberName + ' 회원님\n' + (meta ? meta + '\n' : '') + lines.join('\n') + '\n\n자세히 보기 (영상·체크사항): ' + url;
 }
 
+// ---------- 식단표 (주간, 종이 양식과 같은 모양) ----------
+const DIET_ROWS = [['wake', '기상시간', false], ['breakfast', '아침', true], ['snack1', '간식', true], ['lunch', '점심', true], ['snack2', '간식', true], ['dinner', '저녁', true], ['snack3', '간식', true], ['sleep', '취침시간', false]];
+const emptyDietDays = () => Array.from({ length: 7 }, () => ({}));
+const dietRange = (start) => md(start) + '(' + DOW[dowOf(start)] + ') – ' + md(addDays(start, 6)) + '(' + DOW[dowOf(addDays(start, 6))] + ')';
+
+function dietSheet(d, editable, memberName, trainerName) {
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(d.start_date, i));
+  const days = d.days && d.days.length ? d.days : emptyDietDays();
+  const head = '<tr><th class="dt-corner" scope="col"><span class="sr-only">항목</span></th>' + dates.map((s) => '<th scope="col">' + md(s) + '<span class="dt-dow">' + DOW[dowOf(s)] + '</span></th>').join('') + '</tr>';
+  const body = DIET_ROWS.map(([k, label, meal]) => '<tr class="' + (meal ? 'dt-meal' : 'dt-clock') + '"><th scope="row">' + label + '</th>' + dates.map((s, i) => {
+    const day = days[i] || {};
+    const al = md(s) + ' ' + label;
+    let cell;
+    if (editable) {
+      cell = meal
+        ? '<textarea id="dt-' + k + '-' + i + '" data-diet="' + i + '" data-dk="' + k + '" rows="3" aria-label="' + esc(al) + '" placeholder="먹은 것">' + esc(day[k] || '') + '</textarea>' +
+          '<input id="dt-' + k + '_t-' + i + '" type="time" data-diet="' + i + '" data-dk="' + k + '_t" value="' + esc(day[k + '_t'] || '') + '" aria-label="' + esc(al + ' 시간') + '">'
+        : '<input id="dt-' + k + '-' + i + '" type="time" data-diet="' + i + '" data-dk="' + k + '" value="' + esc(day[k] || '') + '" aria-label="' + esc(al) + '">';
+    } else {
+      cell = meal
+        ? '<div class="dt-text">' + esc(day[k] || '') + '</div><div class="dt-time">' + esc(day[k + '_t'] || '') + '</div>'
+        : '<div class="dt-time dt-big">' + esc(day[k] || '') + '</div>';
+    }
+    return '<td>' + cell + '</td>';
+  }).join('') + '</tr>').join('');
+  return '<div class="diet-sheet' + (editable ? '' : ' ro') + '">' +
+    '<div class="dt-top"><div class="dt-brand">' + esc(CENTER_NAME) + '<span>식단표</span></div><div class="dt-who"><div>회원님 성함 <b>' + esc(memberName || '') + '</b></div><div>담당 선생님 <b>' + esc(trainerName || '') + '</b></div></div></div>' +
+    '<div class="dt-scroll" data-scroll-key="diet"><table class="dt"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+    (editable ? '' : dietCards(dates, days)) +
+    (editable ? '' : d.memo ? '<div class="dt-memo"><b>선생님 코멘트</b><p class="pre">' + esc(d.memo) + '</p></div>' : '') +
+    '</div>';
+}
+
+// 휴대폰에서 볼 때: 날짜별 카드 (표는 옆으로 길어서)
+function dietCards(dates, days) {
+  const filled = dates.map((s, i) => ({ s, day: days[i] || {} })).filter((x) => Object.values(x.day).some((v) => v));
+  const list = filled.length ? filled : dates.map((s, i) => ({ s, day: days[i] || {} }));
+  return '<div class="dt-cards">' + list.map(({ s, day }) => {
+    const lines = DIET_ROWS.map(([k, label, meal]) => {
+      const v = day[k] || '', t = meal ? day[k + '_t'] || '' : '';
+      if (!v && !t) return '';
+      return '<div class="dtc-row"><span class="dtc-l">' + label + '</span><span class="dtc-v">' + (meal ? esc(v) : '') + '</span><span class="dtc-t">' + esc(meal ? t : v) + '</span></div>';
+    }).join('');
+    return '<section class="dtc"><h3 class="dtc-h">' + longDay(s) + '</h3>' + (lines || '<p class="muted small">기록 없음</p>') + '</section>';
+  }).join('') + '</div>';
+}
+
+function dietListView() {
+  if (S.dietErr) return '<div class="card warn-card"><b>식단표를 불러오지 못했어요.</b><p class="small">' + esc(S.dietErr) + '</p></div>';
+  if (S.diets == null) return '<p class="muted">불러오는 중…</p>';
+  const stat = {};
+  for (const x of S.diets) { if (!stat[x.member_id]) stat[x.member_id] = { n: 0, last: x.start_date }; stat[x.member_id].n++; if (x.start_date > stat[x.member_id].last) stat[x.member_id].last = x.start_date; }
+  const q = (S.dSearch || '').trim();
+  const chips = [['all', '전체 강사']].concat(trainers().map((p) => [p.id, p.name])).map(([id, l]) =>
+    '<button type="button" class="chip' + (S.dFilter === id ? ' on dark' : '') + '" data-act="dFilter" data-v="' + id + '" aria-pressed="' + (S.dFilter === id) + '">' + esc(l) + '</button>').join('');
+  const list = S.members.filter((m) => (S.dFilter === 'all' || m.trainer_id === S.dFilter) && (!q || m.name.includes(q)))
+    .sort((a, b) => { const x = stat[a.id], y = stat[b.id]; if (x && y) return x.last < y.last ? 1 : -1; if (x) return -1; if (y) return 1; return a.name.localeCompare(b.name, 'ko'); });
+  const rows = list.length ? list.map((m) => {
+    const st = stat[m.id];
+    return '<button type="button" class="list-row tall' + (m.id === S.dMember ? ' sel' : '') + '" data-act="dMember" data-id="' + m.id + '"><span class="avatar">' + esc(m.name.slice(0, 1)) + '</span><span class="grow"><b>' + esc(m.name) + '</b><br><span class="muted small">' + esc(staffName(m.trainer_id)) + ' · ' + (st ? '식단표 ' + st.n + '개 · 최근 ' + md(st.last) + '~' : '식단표 없음') + '</span></span></button>';
+  }).join('') : '<p class="muted small">해당 회원이 없어요.</p>';
+  return '<div class="split">' +
+    '<section class="card list-pane no-print"><h2 class="h3">회원</h2><label for="d-search" class="small b">검색</label><input id="d-search" type="search" data-model="dSearch" value="' + esc(S.dSearch || '') + '" placeholder="회원 이름">' +
+    '<div class="row gap6 wrap mt8 mb8">' + chips + '</div>' + rows + '</section>' +
+    '<section class="detail-pane">' + dietMemberView() + '</section></div>';
+}
+
+function dietMemberView() {
+  const m = S.dMember ? memberById(S.dMember) : null;
+  if (!m) return '<div class="card muted">왼쪽에서 회원을 누르면 주간 식단표를 쓰고 보낼 수 있어요.</div>';
+  const head = '<div class="card row-between wrap gap8 no-print"><div class="row gap16"><span class="avatar lg">' + esc(m.name.slice(0, 1)) + '</span><div><h2 class="h2">' + esc(m.name) + '</h2><div class="muted small">담당 ' + esc(staffName(m.trainer_id)) + '</div></div></div>' +
+    '<button type="button" class="btn btn-sm btn-primary" data-act="newDiet">+ 새 식단표</button></div>';
+  if (!S.dietRows || S.dietRows.memberId !== m.id) return '<div class="stack16">' + head + '<div class="card muted">불러오는 중…</div></div>';
+  const rows = S.dietRows.rows;
+  const d = S.diet;
+  const weeks = rows.length ? '<div class="card no-print"><div class="small b mb8">저장된 식단표</div><div class="row gap6 wrap">' + rows.map((r) =>
+    '<button type="button" class="chip' + (d && d.id === r.id ? ' on dark' : '') + '" data-act="openDiet" data-id="' + r.id + '" aria-pressed="' + (!!d && d.id === r.id) + '">' + dietRange(r.start_date) + (r.share_token ? ' · 보냄' : '') + '</button>').join('') + '</div></div>' : '';
+  if (!d) return '<div class="stack16">' + head + weeks + '<div class="card muted">아직 식단표가 없어요. <b>+ 새 식단표</b>를 눌러 시작하세요.</div></div>';
+  const editor = '<div class="card stack">' +
+    '<div class="row-between wrap gap8 no-print"><div class="row gap8 wrap"><label for="diet-start" class="small b">시작 날짜</label><input id="diet-start" type="date" data-dietstart="1" value="' + esc(d.start_date) + '" style="width:auto"><span class="muted small">' + dietRange(d.start_date) + '</span></div>' +
+    '<span id="diet-dirty" class="small ' + (S.dietDirty ? 'danger-text' : 'muted') + '">' + (S.dietDirty ? '저장 안 한 내용이 있어요' : d.id ? '저장됨' : '') + '</span></div>' +
+    dietSheet(d, !S.printing, m.name, staffName(d.trainer_id || m.trainer_id)) +
+    '<div class="no-print"><label for="diet-memo">선생님 코멘트 (회원에게 같이 보여요)</label><textarea id="diet-memo" data-dietmemo="1" rows="3" placeholder="예: 단백질이 부족해요. 점심에 계란이나 두부를 더해 보세요.">' + esc(d.memo || '') + '</textarea></div>' +
+    '<div class="row gap8 wrap no-print"><button type="button" class="btn btn-primary" data-act="saveDiet"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '저장') + '</button>' +
+    '<button type="button" class="btn" data-act="shareDiet"' + (S.busy ? ' disabled' : '') + '>회원에게 보내기' + (d.share_token ? ' (링크 있음)' : '') + '</button>' +
+    '<button type="button" class="btn" data-act="printDiet">인쇄 · PDF 저장</button>' +
+    (d.id ? '<button type="button" class="btn danger-text" data-act="deleteDiet">삭제</button>' : '<button type="button" class="btn" data-act="cancelDiet">취소</button>') + '</div>' +
+    '</div>';
+  return '<div class="stack16">' + head + weeks + editor + '</div>';
+}
+
+async function loadDiets() {
+  try {
+    S.diets = await api.select('diets', { select: 'id,member_id,start_date', order: 'start_date.desc', limit: 5000 });
+    S.dietErr = '';
+  } catch (e) {
+    console.error(e);
+    S.diets = [];
+    S.dietErr = /diets|relation|schema cache|404/i.test(String(e.message)) ? '식단표 저장 공간(diets 테이블)이 아직 없어요. Supabase에서 supabase/diet.sql 을 한 번 실행해야 해요.' : (e.message || '오류');
+  }
+  if (S.dMember && !S.dietErr) await loadDietRows(S.dMember, S.diet && S.diet.id);
+}
+
+async function loadDietRows(memberId, keepId) {
+  const rows = await api.select('diets', { filters: [['member_id', 'eq', memberId]], order: 'start_date.desc' });
+  S.dietRows = { memberId, rows };
+  const pick = (keepId && rows.find((r) => r.id === keepId)) || rows[0] || null;
+  S.diet = pick ? JSON.parse(JSON.stringify(pick)) : null;
+  if (S.diet && (!S.diet.days || S.diet.days.length !== 7)) S.diet.days = Object.assign(emptyDietDays(), S.diet.days || []);
+  S.dietDirty = false;
+}
+
+async function saveDietNow() {
+  const d = S.diet;
+  if (!d) return null;
+  const patch = { start_date: d.start_date, days: d.days, memo: d.memo || '', updated_at: new Date().toISOString() };
+  let row;
+  if (d.id) row = await api.update('diets', d.id, patch);
+  else row = (await api.insert('diets', [Object.assign({ member_id: d.member_id, trainer_id: S.me.id }, patch)]))[0];
+  S.dietDirty = false;
+  S.diets = null;
+  await loadDiets();
+  await loadDietRows(d.member_id, row.id);
+  return S.diet;
+}
+
+function dietShareText(memberName, d, url) {
+  return '[' + CENTER_NAME + ' 식단표] ' + dietRange(d.start_date) + ' ' + memberName + ' 회원님\n' + (d.memo ? d.memo + '\n' : '') + '\n식단표 보기: ' + url;
+}
+
+function dietGuard(fn) {
+  if (!S.dietDirty) return fn();
+  S.modal = { type: 'confirm', title: '저장 안 한 내용', text: '식단표에 저장하지 않은 내용이 있어요. 버리고 이동할까요?', yes: '버리고 이동', fn: async () => { S.dietDirty = false; await fn(); }, okMsg: ' ' };
+  render();
+}
+
+function sharedDietView() {
+  const sh = S.shared;
+  let body;
+  if (sh.loading) body = '<div class="center-screen" style="min-height:40vh"><div class="spinner" aria-label="불러오는 중"></div></div>';
+  else if (!sh.data) body = '<div class="card"><h1 class="h2">식단표를 찾을 수 없어요</h1><p class="muted">링크가 잘못됐거나, 선생님이 공유를 끈 식단표예요.</p></div>';
+  else {
+    const d = sh.data;
+    body = '<header class="share-head no-print"><div class="brand-lg">' + esc(CENTER_NAME) + '</div><h1 class="h1">' + esc(d.member) + ' 회원님 식단표</h1><div class="muted">' + dietRange(d.start_date) + '</div></header>' +
+      '<section class="card">' + dietSheet(d, false, d.member, d.trainer) + '</section>' +
+      '<div class="row gap8 center-row no-print"><button type="button" class="btn" data-act="printDiet">인쇄 · PDF 저장</button></div>' +
+      '<p class="muted small center no-print">' + esc(CENTER_NAME) + '에서 보낸 식단표예요.</p>';
+  }
+  return '<div class="share-page share-wide">' + body + '</div>';
+}
+
+async function loadSharedDiet(token) {
+  S.shared = { kind: 'diet', loading: true, data: null };
+  renderNow();
+  try { S.shared.data = await api.rpc('get_shared_diet', { p_token: token }); } catch (e) { console.error(e); S.shared.data = null; }
+  S.shared.loading = false;
+  renderNow();
+}
+
 // ---------- 로그인 ----------
 function authView() {
   const demo = api.mode === 'demo';
@@ -345,6 +505,7 @@ const NAV = [
   { key: 'members', label: '회원·수강권' },
   { key: 'journal', label: '수업일지' },
   { key: 'homework', label: '운동 숙제' },
+  { key: 'diet', label: '식단표' },
   { key: 'stats', label: '월별 수업 현황', trainerLabel: '내 수업 현황' },
   { key: 'sales', label: '매출·결제', trainerLabel: '내 매출' },
   { key: 'board', label: '공지·매뉴얼·할 일' },
@@ -352,7 +513,7 @@ const NAV = [
   { key: 'staff', label: '직원 관리', adminOnly: true },
   { key: 'myinfo', label: '내 정보' },
 ];
-const TITLES = { homework: '운동 숙제', stats: '월별 수업 현황', blocks: '개인 고정 스케줄', home: '오늘의 센터', schedule: '예약·출석', members: '회원·수강권', journal: '수업일지', sales: '매출·결제', board: '공지·매뉴얼·할 일', staff: '직원 관리', myinfo: '내 정보' };
+const TITLES = { diet: '식단표', homework: '운동 숙제', stats: '월별 수업 현황', blocks: '개인 고정 스케줄', home: '오늘의 센터', schedule: '예약·출석', members: '회원·수강권', journal: '수업일지', sales: '매출·결제', board: '공지·매뉴얼·할 일', staff: '직원 관리', myinfo: '내 정보' };
 
 function layoutView() {
   const today = todayStr();
@@ -391,6 +552,7 @@ function screenView() {
     case 'schedule': return scheduleView();
     case 'members': return membersView();
     case 'journal': return journalListView();
+    case 'diet': return dietListView();
     case 'stats': return statsView();
     case 'sales': return salesView();
     case 'board': return boardView();
@@ -1118,14 +1280,14 @@ function modalView() {
       '<div class="row gap8"><div class="grow stack4">' + field('bl-start', '시작', '<select id="bl-start" name="start_time">' + times.map((t) => '<option' + (t === st ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + '</div><div class="grow stack4">' + field('bl-end', '끝', '<select id="bl-end" name="end_time">' + times.map((t) => '<option' + (t === en ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + '</div></div>';
     if (b) body += '<button type="button" class="link small left danger-text" data-act="deleteBlock" data-id="' + b.id + '">이 고정 스케줄 삭제</button>';
   } else if (md_.type === 'share') {
-    title = '회원에게 일지 보내기';
-    body = '<p class="small">' + esc(md_.memberName) + ' 회원님 전용 링크예요. 로그인 없이 운동 내용과 영상을 볼 수 있어요.</p>' +
+    title = md_.kind === 'diet' ? '회원에게 식단표 보내기' : '회원에게 일지 보내기';
+    body = '<p class="small">' + esc(md_.memberName) + ' 회원님 전용 링크예요. ' + (md_.kind === 'diet' ? '로그인 없이 식단표를 보고 인쇄할 수 있어요.' : '로그인 없이 운동 내용과 영상을 볼 수 있어요.') + '</p>' +
       '<label for="share-url">링크</label><input id="share-url" readonly value="' + esc(md_.url) + '">' +
       '<label for="share-text">보낼 글 (고쳐도 돼요)</label><textarea id="share-text" rows="8">' + esc(md_.text) + '</textarea>' +
       '<div class="row gap8 wrap">' + (navigator.share ? '<button type="button" class="btn btn-primary grow" data-act="shareNow">카톡 등으로 보내기</button>' : '') +
       '<button type="button" class="btn grow" data-act="copyShare">글+링크 복사</button></div>' +
       '<button type="button" class="link small left" data-act="openShareLink">회원이 보는 화면 미리보기</button>' +
-      '<button type="button" class="link small left danger-text" data-act="unshareJournal" data-id="' + md_.journalId + '">링크 끄기 (보낸 링크로 더는 못 봐요)</button>';
+      '<button type="button" class="link small left danger-text" data-act="' + (md_.kind === 'diet' ? 'unshareDiet' : 'unshareJournal') + '" data-id="' + md_.journalId + '">링크 끄기 (보낸 링크로 더는 못 봐요)</button>';
   } else if (md_.type === 'video') {
     title = '운동 영상';
     body = md_.url ? '<video src="' + esc(md_.url) + '" controls playsinline autoplay style="width:100%;max-height:70vh;background:#000;border-radius:8px"></video>' : '<p class="muted">영상을 불러오는 중…</p>';
@@ -1298,6 +1460,7 @@ async function goScreen(screen) {
   if (screen === 'journal') { S.journals = null; render(); await loadJournals(); }
   if (screen === 'sales') { S.monthDone = null; render(); await loadMonthDone(); }
   if (screen === 'stats') { S.statRows = null; render(); await loadStats(); }
+  if (screen === 'diet') { S.diets = null; render(); await loadDiets(); }
   if (screen === 'schedule') await loadSessions();
   if (screen === 'members' && S.memberId) await loadMemberDetail(S.memberId);
   render();
@@ -1335,8 +1498,25 @@ const actions = {
   demoReset: () => { api.reset(); toast('체험 데이터를 처음 상태로 돌렸어요.'); },
   logout: () => run(async () => { await api.signOut(); location.reload(); }),
   reloadMe: () => run(async () => { await enterApp(); if (S.me && S.me.role === 'pending') toast('아직 승인 전이에요.'); }),
-  refresh: () => run(async () => { const auto = await autoCheckIn().catch(() => 0); if (auto) setTimeout(() => toast('지난 예약 ' + auto + '건을 출석으로 바꿨어요.'), 3200); await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.screen === 'stats') await loadStats(); if (S.screen === 'homework' && hwFrame && hwFrame.contentWindow && hwFrame.contentWindow.hwRefresh) await hwFrame.contentWindow.hwRefresh(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
+  refresh: () => run(async () => { const auto = await autoCheckIn().catch(() => 0); if (auto) setTimeout(() => toast('지난 예약 ' + auto + '건을 출석으로 바꿨어요.'), 3200); await loadCore(); await Promise.all([loadToday(), loadSessions(true)]); if (S.screen === 'journal') await loadJournals(); if (S.screen === 'sales') await loadMonthDone(); if (S.screen === 'stats') await loadStats(); if (S.screen === 'diet' && !S.dietDirty) await loadDiets(); if (S.screen === 'homework' && hwFrame && hwFrame.contentWindow && hwFrame.contentWindow.hwRefresh) await hwFrame.contentWindow.hwRefresh(); if (S.memberDetail) await loadMemberDetail(S.memberDetail.memberId); }, '최신 내용으로 불러왔어요.'),
   go: (d) => goScreen(d.v),
+  dFilter: (d) => { S.dFilter = d.v; render(); },
+  dMember: (d) => dietGuard(() => run(async () => { S.dMember = d.id; S.dietRows = null; S.diet = null; render(); await loadDietRows(d.id); })),
+  openDiet: (d) => dietGuard(() => { const r = S.dietRows.rows.find((x) => x.id === d.id); S.diet = JSON.parse(JSON.stringify(r)); if (!S.diet.days || S.diet.days.length !== 7) S.diet.days = Object.assign(emptyDietDays(), S.diet.days || []); S.dietDirty = false; render(); }),
+  newDiet: () => dietGuard(() => { S.diet = { id: null, member_id: S.dMember, trainer_id: S.me.id, start_date: todayStr(), days: emptyDietDays(), memo: '' }; S.dietDirty = false; render(); }),
+  cancelDiet: () => dietGuard(() => { const r = S.dietRows && S.dietRows.rows[0]; S.diet = r ? JSON.parse(JSON.stringify(r)) : null; S.dietDirty = false; render(); }),
+  saveDiet: () => run(async () => { await saveDietNow(); }, '식단표를 저장했어요.'),
+  shareDiet: () => run(async () => {
+    let d = S.diet;
+    if (!d.id || S.dietDirty) d = await saveDietNow();
+    if (!d.share_token) { await api.update('diets', d.id, { share_token: (uid() + uid()).replace(/-/g, '') }); await loadDietRows(d.member_id, d.id); d = S.diet; }
+    const m = memberById(d.member_id);
+    const url = location.origin + location.pathname + '?d=' + encodeURIComponent(d.share_token);
+    S.modal = { type: 'share', kind: 'diet', journalId: d.id, memberName: m ? m.name : '', url, text: dietShareText(m ? m.name : '', d, url) };
+  }),
+  unshareDiet: (d) => run(async () => { await api.update('diets', d.id, { share_token: null }); S.modal = null; await loadDietRows(S.dMember, d.id); }, '링크를 껐어요. 보낸 링크로는 더 이상 볼 수 없어요.'),
+  deleteDiet: () => { const d = S.diet; confirmBox('식단표 삭제', dietRange(d.start_date) + ' 식단표를 지울까요? 되돌릴 수 없어요.', '삭제', async () => { await api.remove('diets', d.id); S.dietDirty = false; S.diet = null; await loadDiets(); }); },
+  printDiet: () => { syncDietInputs(); S.printing = true; renderNow(); setTimeout(() => { window.print(); S.printing = false; render(); }, 50); },
 
   // 달력
   calView: (d) => run(async () => { S.calView = d.v; await loadSessions(); }),
@@ -1435,7 +1615,7 @@ const actions = {
   }),
   shareNow: () => {
     const text = document.getElementById('share-text').value;
-    navigator.share({ title: CENTER_NAME + ' 수업일지', text }).catch(() => {});
+    navigator.share({ title: CENTER_NAME + (S.modal && S.modal.kind === 'diet' ? ' 식단표' : ' 수업일지'), text }).catch(() => {});
   },
   copyShare: () => {
     const text = document.getElementById('share-text').value;
@@ -1689,7 +1869,7 @@ const submits = {
   saveMe: (v) => run(async () => { await api.rpc('update_my_profile', { p_name: v.name, p_color: v.color }); await loadCore(); }, '저장했어요.'),
   changePw: (v, form) => run(async () => { await api.updatePassword(v.password); form.reset(); }, '비밀번호를 바꿨어요.'),
 
-  confirmYes: () => { const fn = S.modal.fn; run(async () => { await fn(); S.modal = null; }, '삭제했어요.'); },
+  confirmYes: () => { const fn = S.modal.fn; const okMsg = S.modal.okMsg; run(async () => { await fn(); S.modal = null; }, okMsg ? okMsg.trim() : '삭제했어요.'); },
 };
 
 // ---------- 이벤트 연결 ----------
@@ -1714,14 +1894,26 @@ document.addEventListener('submit', (ev) => {
 document.addEventListener('input', (ev) => {
   const el = ev.target;
   if (el.dataset.model) { S[el.dataset.model] = el.value; render(); }
+  if (el.dataset.diet != null && S.diet) { S.diet.days[Number(el.dataset.diet)][el.dataset.dk] = el.value; markDietDirty(); }
+  if (el.dataset.dietmemo && S.diet) { S.diet.memo = el.value; markDietDirty(); }
   if (el.dataset.row != null && el.dataset.field && S.composer) {
     const r = S.composer.rows[Number(el.dataset.row)];
     if (r) r[el.dataset.field] = el.value;
   }
 });
 
+function markDietDirty() {
+  S.dietDirty = true;
+  const t = document.getElementById('diet-dirty');
+  if (t) { t.textContent = '저장 안 한 내용이 있어요'; t.className = 'small danger-text'; }
+}
+function syncDietInputs() {
+  document.querySelectorAll('[data-diet]').forEach((el) => { if (S.diet) S.diet.days[Number(el.dataset.diet)][el.dataset.dk] = el.value; });
+}
+
 document.addEventListener('change', (ev) => {
   const el = ev.target;
+  if (el.dataset.dietstart && S.diet) { syncDietInputs(); if (el.value) S.diet.start_date = el.value; S.dietDirty = true; render(); return; }
   if (el.dataset.videoRow != null && S.composer) {
     syncComposer();
     const f = el.files && el.files[0];
@@ -1743,6 +1935,8 @@ document.addEventListener('keydown', (ev) => {
 (async function boot() {
   const shareToken = params.get('j');
   if (shareToken) { await loadShared(shareToken); return; }
+  const dietToken = params.get('d');
+  if (dietToken) { await loadSharedDiet(dietToken); return; }
   try {
     if (api.redirectError) S.authErr = api.redirectError;
     if (api.redirectType === 'recovery') S.authView = 'newpw';
@@ -1754,6 +1948,8 @@ document.addEventListener('keydown', (ev) => {
   S.booting = false;
   renderNow();
 })();
+
+window.addEventListener('beforeunload', (e) => { if (S.dietDirty) { e.preventDefault(); e.returnValue = ''; } });
 
 // 테스트용
 window.__joeum = { S, api, render: renderNow };

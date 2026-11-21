@@ -423,7 +423,7 @@ export class MockApi {
     const me = this._me();
     const row = (this.db[table] || []).find((r) => r.id === id);
     if (!row) return;
-    const ownerOk = (table === 'tasks' && row.owner_id === me.id) || (table === 'sessions' && row.trainer_id === me.id) || (table === 'journals' && row.trainer_id === me.id) || (table === 'blocks' && row.owner_id === me.id);
+    const ownerOk = (table === 'tasks' && row.owner_id === me.id) || (table === 'sessions' && row.trainer_id === me.id) || (table === 'journals' && row.trainer_id === me.id) || (table === 'blocks' && row.owner_id === me.id) || (table === 'diets' && row.trainer_id === me.id);
     if (!this._admin() && !(this._staff() && ownerOk)) throw new ApiError('삭제할 권한이 없어요.', 403);
     this.db[table] = this.db[table].filter((r) => r.id !== id);
     if (table === 'sessions') this.db.journals = this.db.journals.filter((j) => j.session_id !== id);
@@ -441,6 +441,13 @@ export class MockApi {
       const s = this.db.sessions.find((x) => x.id === j.session_id);
       const p = this.db.profiles.find((x) => x.id === j.trainer_id);
       return { member: m ? m.name : '', trainer: p ? p.name : '', starts_at: s ? s.starts_at : null, items: j.items, condition: j.condition || null, intensity: j.intensity || null, updated_at: j.updated_at };
+    }
+    if (fn === 'get_shared_diet') {
+      const d = (this.db.diets || []).find((x) => x.share_token && x.share_token === args.p_token);
+      if (!d) return null;
+      const m = this.db.members.find((x) => x.id === d.member_id);
+      const p = this.db.profiles.find((x) => x.id === d.trainer_id);
+      return { member: m ? m.name : '', trainer: p ? p.name : '', start_date: d.start_date, days: d.days, memo: d.memo || '', updated_at: d.updated_at };
     }
     if (fn === 'update_my_profile') {
       const me = this._me();

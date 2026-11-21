@@ -196,3 +196,54 @@ button.blk { pointer-events: auto; cursor: pointer; text-align: left; font: inhe
 /* 운동 숙제 화면 자리 (iframe이 이 위에 겹쳐짐) */
 .hw-slot { width: 100%; height: calc(100vh - 150px); min-height: 560px; border-radius: 14px; }
 @media (max-width: 760px) { .hw-slot { height: calc(100vh - 110px); } }
+
+/* ---------- 식단표 ---------- */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.diet-sheet { background: #fff; }
+.dt-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.dt-brand { font-weight: 800; font-size: 20px; color: #A9772B; letter-spacing: -0.02em; }
+.dt-brand span { font-weight: 600; font-size: 14px; color: var(--muted, #6b6b6b); margin-left: 8px; }
+.dt-who { font-size: 13px; text-align: right; line-height: 1.7; }
+.dt-who b { display: inline-block; min-width: 90px; border-bottom: 1px solid #999; text-align: center; margin-left: 6px; }
+.dt-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.dt { width: 100%; min-width: 860px; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.dt th, .dt td { border: 1px solid #333; padding: 4px; vertical-align: top; }
+.dt thead th { text-align: center; font-weight: 700; padding: 6px 4px; background: #faf7f1; }
+.dt .dt-dow { display: block; font-weight: 500; font-size: 11px; color: #666; }
+.dt .dt-corner { width: 76px; }
+.dt tbody th { width: 76px; text-align: center; vertical-align: middle; font-weight: 700; background: #faf7f1; }
+.dt td textarea { width: 100%; min-height: 64px; resize: vertical; border: 0; padding: 2px; font: inherit; font-size: 13px; background: transparent; }
+.dt td input[type=time] { width: 100%; border: 0; border-top: 1px dashed #ddd; padding: 2px; font: inherit; font-size: 12px; background: transparent; min-height: 26px; }
+.dt tr.dt-clock td input[type=time] { border-top: 0; text-align: center; }
+.dt td textarea:focus, .dt td input:focus { outline: 2px solid #23634A; outline-offset: -2px; background: #f3faf6; }
+.dt-text { white-space: pre-wrap; min-height: 56px; }
+.dt-time { text-align: right; color: #555; font-size: 12px; }
+.dt-time.dt-big { text-align: center; font-size: 14px; color: #111; min-height: 20px; }
+.dt-memo { margin-top: 12px; border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; background: #faf7f1; }
+.dt-memo p { margin: 4px 0 0; }
+.share-page.share-wide { max-width: 1100px; }
+.center-row { justify-content: center; }
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body { background: #fff !important; }
+  .side, .page-head, .no-print, .toast, .modal-back, #hw-frame, iframe { display: none !important; }
+  .shell, .main, .split, .detail-pane, .stack16, .card, .share-page { display: block !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; max-width: none !important; width: auto !important; background: #fff !important; }
+  .dt-scroll { overflow: visible; }
+  .dt { min-width: 0; font-size: 11px; }
+  .dt-text { min-height: 48px; }
+}
+.dt-cards { display: none; }
+.dtc { border: 1px solid #e4dfd5; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: #fff; }
+.dtc-h { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
+.dtc-row { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid #f0ece4; font-size: 14px; }
+.dtc-l { width: 64px; flex: none; font-weight: 700; color: #6b5b2e; }
+.dtc-v { flex: 1; white-space: pre-wrap; }
+.dtc-t { flex: none; color: #555; }
+@media (max-width: 760px) {
+  .diet-sheet.ro .dt-scroll { display: none; }
+  .diet-sheet.ro .dt-cards { display: block; }
+}
+@media print {
+  .diet-sheet.ro .dt-scroll { display: block !important; }
+  .diet-sheet.ro .dt-cards { display: none !important; }
+}
